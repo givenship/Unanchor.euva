@@ -1,446 +1,58 @@
--- Combat Module
--- Hitbox adjustment, Aimlock, Team Check, Visibility Check
+-- Combat Module - Main GUI
+-- Loads Hitbox and Aimlock scripts from GitHub
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local Camera = workspace.CurrentCamera
-local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
 
 local CombatModule = {}
-CombatModule.Settings = {
-    HitboxEnabled = false,
+
+-- GitHub URLs (REPLACE THESE WITH YOUR ACTUAL RAW GITHUB LINKS)
+local HITBOX_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/hitbox-script.lua"
+local AIMLOCK_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/aimlock-script.lua"
+
+-- Settings for Hitbox
+getgenv().HitboxSettings = {
+    Enabled = false,
     HitboxX = 2,
     HitboxY = 2,
     HitboxZ = 2,
     HitboxTransparency = 0.5,
+    HitboxPosX = 0,
+    HitboxPosY = 0,
+    HitboxPosZ = 0,
     PreviewTransparency = 0.7,
-    PreviewPosX = 0,
-    PreviewPosY = -2,
-    PreviewPosZ = -8,
-    VisibilityCheck = false,
     TeamCheck = false,
-    AimlockEnabled = false,
-    AimlockSmoothness = 1,
-    ShowFOV = false,
-    FOVSize = 100
+    VisibilityCheck = false
 }
 
-local hitboxConnection = nil
-local aimlockConnection = nil
-local fovUpdateConnection = nil
-local currentTarget = nil
-local fovCircle = nil
-local originalHitboxSizes = {}
-local aimlockActive = false
-local aimlockEndTime = 0
-local aimlockCooldown = false
+-- Settings for Aimlock
+getgenv().AimlockSettings = {
+    Enabled = false,
+    Smoothness = 1,
+    ShowFOV = false,
+    FOVSize = 100,
+    TeamCheck = false,
+    VisibilityCheck = false
+}
 
--- Hitbox preview
-local previewBox = nil
+local hitboxLoaded = false
+local aimlockLoaded = false
 
--- Advanced Aimlock Variables (from advanced aimbot)
-local PerceivedPos = nil
-local PerceivedVel = Vector3.new()
-local LastUpdateTimeX = 0
-local LastUpdateTimeY = 0
-local JustLocked = true
-local lockedCharacter = nil
-
-local function createFOVCircle()
-    if fovCircle then return end
+local function loadScript(url)
+    local success, result = pcall(function()
+        return game:HttpGet(url)
+    end)
     
-    fovCircle = Drawing.new("Circle")
-    fovCircle.Thickness = 2
-    fovCircle.NumSides = 64
-    fovCircle.Radius = CombatModule.Settings.FOVSize
-    fovCircle.Color = Color3.fromRGB(255, 255, 255)
-    fovCircle.Transparency = 0.5
-    fovCircle.Visible = false
-    fovCircle.Filled = false
-end
-
-local function updateFOVCircle()
-    if not fovCircle then return end
-    
-    -- FOV follows cursor
-    local mousePos = UserInputService:GetMouseLocation()
-    fovCircle.Position = mousePos
-    fovCircle.Radius = CombatModule.Settings.FOVSize
-    fovCircle.Visible = CombatModule.Settings.ShowFOV and CombatModule.Settings.AimlockEnabled
-end
-
-local function createPreviewBox()
-    if previewBox then return end
-    
-    -- Create a part in workspace for preview
-    previewBox = Instance.new("Part")
-    previewBox.Name = "HitboxPreview"
-    previewBox.Anchored = true
-    previewBox.CanCollide = false
-    previewBox.Material = Enum.Material.ForceField
-    previewBox.Color = Color3.fromRGB(255, 0, 0)
-    previewBox.Transparency = CombatModule.Settings.PreviewTransparency
-    previewBox.Size = Vector3.new(
-        CombatModule.Settings.HitboxX,
-        CombatModule.Settings.HitboxY,
-        CombatModule.Settings.HitboxZ
-    )
-    
-    -- Position it based on settings
-    if Camera then
-        previewBox.CFrame = Camera.CFrame * CFrame.new(
-            CombatModule.Settings.PreviewPosX,
-            CombatModule.Settings.PreviewPosY,
-            CombatModule.Settings.PreviewPosZ
-        )
-    end
-    
-    previewBox.Parent = workspace
-end
-
-local function updatePreviewBox()
-    if not previewBox then return end
-    
-    -- Update size
-    previewBox.Size = Vector3.new(
-        CombatModule.Settings.HitboxX,
-        CombatModule.Settings.HitboxY,
-        CombatModule.Settings.HitboxZ
-    )
-    
-    -- Update transparency
-    previewBox.Transparency = CombatModule.Settings.PreviewTransparency
-    
-    -- Update position based on settings
-    if Camera then
-        previewBox.CFrame = Camera.CFrame * CFrame.new(
-            CombatModule.Settings.PreviewPosX,
-            CombatModule.Settings.PreviewPosY,
-            CombatModule.Settings.PreviewPosZ
-        )
-    end
-end
-
-local function removePreviewBox()
-    if previewBox then
-        previewBox:Destroy()
-        previewBox = nil
-    end
-end
-
-local function isOnSameTeam(player)
-    if not CombatModule.Settings.TeamCheck then return false end
-    
-    if player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then
-        return true
+    if success then
+        local loadSuccess, loadResult = pcall(function()
+            return loadstring(result)()
+        end)
+        return loadSuccess
     end
     
     return false
-end
-
-local function isVisible(targetPart)
-    if not CombatModule.Settings.VisibilityCheck then return true end
-    
-    local success, result = pcall(function()
-        local origin = Camera.CFrame.Position
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Blacklist
-        params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
-        
-        local direction = (targetPart.Position - origin)
-        local rayResult = workspace:Raycast(origin, direction, params)
-        
-        if not rayResult then return true end
-        return rayResult.Instance:IsDescendantOf(targetPart.Parent)
-    end)
-    
-    return success and result or false
-end
-
-local function getClosestPlayerToCursor()
-    local closestPlayer = nil
-    local shortestDistance = CombatModule.Settings.FOVSize
-    
-    -- Use actual mouse position
-    local mousePos = UserInputService:GetMouseLocation()
-    
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            -- Team check
-            if isOnSameTeam(player) then
-                continue
-            end
-            
-            local character = player.Character
-            local head = character:FindFirstChild("Head")
-            
-            if head then
-                -- Visibility check
-                if CombatModule.Settings.VisibilityCheck and not isVisible(head) then
-                    continue
-                end
-                
-                local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
-                
-                if onScreen then
-                    local screenPosition = Vector2.new(screenPos.X, screenPos.Y)
-                    local distance = (screenPosition - mousePos).Magnitude
-                    
-                    if distance < shortestDistance then
-                        shortestDistance = distance
-                        closestPlayer = player
-                    end
-                end
-            end
-        end
-    end
-    
-    return closestPlayer
-end
-
-local function applyHitbox()
-    if not CombatModule.Settings.HitboxEnabled then return end
-    
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            -- Team check
-            if isOnSameTeam(player) then
-                -- Restore original hitbox if on same team
-                if originalHitboxSizes[player] then
-                    for partName, originalSize in pairs(originalHitboxSizes[player]) do
-                        local part = player.Character:FindFirstChild(partName)
-                        if part and part:IsA("BasePart") then
-                            part.Size = originalSize
-                            part.Transparency = 0
-                            part.CanCollide = true
-                        end
-                    end
-                    originalHitboxSizes[player] = nil
-                end
-                continue
-            end
-            
-            local character = player.Character
-            local hrp = character:FindFirstChild("HumanoidRootPart")
-            
-            if hrp then
-                -- Store original size if not already stored
-                if not originalHitboxSizes[player] then
-                    originalHitboxSizes[player] = {}
-                end
-                
-                if not originalHitboxSizes[player]["HumanoidRootPart"] then
-                    originalHitboxSizes[player]["HumanoidRootPart"] = hrp.Size
-                end
-                
-                -- Apply new hitbox size
-                hrp.Size = Vector3.new(
-                    CombatModule.Settings.HitboxX,
-                    CombatModule.Settings.HitboxY,
-                    CombatModule.Settings.HitboxZ
-                )
-                hrp.Transparency = CombatModule.Settings.HitboxTransparency
-                hrp.CanCollide = false
-            end
-        end
-    end
-end
-
-local function restoreHitboxes()
-    for player, parts in pairs(originalHitboxSizes) do
-        if player.Character then
-            for partName, originalSize in pairs(parts) do
-                local part = player.Character:FindFirstChild(partName)
-                if part and part:IsA("BasePart") then
-                    part.Size = originalSize
-                    part.Transparency = 0
-                    part.CanCollide = true
-                end
-            end
-        end
-    end
-    originalHitboxSizes = {}
-end
-
-local function aimlockUpdate()
-    if not CombatModule.Settings.AimlockEnabled then return end
-    
-    -- Check if aimlock duration is over
-    if aimlockActive and tick() >= aimlockEndTime then
-        aimlockActive = false
-        aimlockCooldown = true
-        currentTarget = nil
-        lockedCharacter = nil
-        PerceivedPos = nil
-        PerceivedVel = Vector3.new()
-        JustLocked = true
-        
-        -- End cooldown after 1 second
-        task.delay(1, function()
-            aimlockCooldown = false
-        end)
-    end
-    
-    -- Only lock if active
-    if not aimlockActive then return end
-    
-    -- Validate current target
-    if not currentTarget or not currentTarget.Character or not currentTarget.Character.Parent then
-        aimlockActive = false
-        currentTarget = nil
-        lockedCharacter = nil
-        return
-    end
-    
-    lockedCharacter = currentTarget.Character
-    local head = lockedCharacter:FindFirstChild("Head")
-    
-    if not head then
-        aimlockActive = false
-        currentTarget = nil
-        lockedCharacter = nil
-        return
-    end
-    
-    -- Advanced perception-based tracking
-    local now = tick()
-    local currentVelocity = head.AssemblyLinearVelocity or Vector3.new()
-    local currentWorldPos = head.Position
-    
-    -- Reaction delays based on smoothness
-    local ReactionDelayX = CombatModule.Settings.AimlockSmoothness / 100
-    local ReactionDelayY = CombatModule.Settings.AimlockSmoothness / 100
-    
-    -- Initialize perception on first lock
-    if JustLocked then
-        PerceivedPos = currentWorldPos
-        PerceivedVel = currentVelocity
-        LastUpdateTimeX = now
-        LastUpdateTimeY = now
-        JustLocked = false
-    end
-    
-    -- Landing detection (when falling stops)
-    local LANDING_THRESHOLD = 1
-    local FALLING_THRESHOLD = -10
-    if math.abs(currentVelocity.Y) < LANDING_THRESHOLD and PerceivedVel.Y < FALLING_THRESHOLD then
-        PerceivedPos = Vector3.new(PerceivedPos.X, currentWorldPos.Y, PerceivedPos.Z)
-        PerceivedVel = Vector3.new(PerceivedVel.X, currentVelocity.Y, PerceivedVel.Z)
-        LastUpdateTimeY = now
-    end
-    
-    -- Update X/Z perception based on reaction delay
-    if now - LastUpdateTimeX >= ReactionDelayX then
-        PerceivedPos = Vector3.new(currentWorldPos.X, PerceivedPos.Y, currentWorldPos.Z)
-        PerceivedVel = Vector3.new(currentVelocity.X, PerceivedVel.Y, currentVelocity.Z)
-        LastUpdateTimeX = now
-    end
-    
-    -- Update Y perception based on reaction delay
-    if now - LastUpdateTimeY >= ReactionDelayY then
-        PerceivedPos = Vector3.new(PerceivedPos.X, currentWorldPos.Y, PerceivedPos.Z)
-        PerceivedVel = Vector3.new(PerceivedVel.X, currentVelocity.Y, PerceivedVel.Z)
-        LastUpdateTimeY = now
-    end
-    
-    -- Calculate perceived position with velocity extrapolation
-    local timeSinceX = now - LastUpdateTimeX
-    local timeSinceY = now - LastUpdateTimeY
-    
-    local perceivedX = PerceivedPos.X + PerceivedVel.X * timeSinceX
-    local perceivedY = PerceivedPos.Y + PerceivedVel.Y * timeSinceY
-    local perceivedZ = PerceivedPos.Z + PerceivedVel.Z * timeSinceX
-    local perceivedWorldPos = Vector3.new(perceivedX, perceivedY, perceivedZ)
-    
-    -- Aim at perceived position
-    local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, perceivedWorldPos)
-    local smoothness = CombatModule.Settings.AimlockSmoothness
-    local alpha = 1 / math.max(1, smoothness)
-    Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, alpha)
-end
-
-local function activateAimlock()
-    if not CombatModule.Settings.AimlockEnabled then return end
-    if aimlockActive or aimlockCooldown then return end
-    
-    local target = getClosestPlayerToCursor()
-    
-    if target and target.Character then
-        currentTarget = target
-        lockedCharacter = target.Character
-        aimlockActive = true
-        aimlockEndTime = tick() + 1 -- Lock for 1 second
-        JustLocked = true
-        PerceivedPos = nil
-        PerceivedVel = Vector3.new()
-    end
-end
-
-local function toggleHitbox(enabled)
-    CombatModule.Settings.HitboxEnabled = enabled
-    
-    if enabled then
-        createPreviewBox()
-        
-        if not hitboxConnection then
-            hitboxConnection = RunService.Heartbeat:Connect(function()
-                pcall(applyHitbox)
-                pcall(updatePreviewBox)
-            end)
-        end
-    else
-        if hitboxConnection then
-            hitboxConnection:Disconnect()
-            hitboxConnection = nil
-        end
-        removePreviewBox()
-        restoreHitboxes()
-    end
-end
-
-local function toggleAimlock(enabled)
-    CombatModule.Settings.AimlockEnabled = enabled
-    
-    if enabled then
-        createFOVCircle()
-        
-        if not aimlockConnection then
-            aimlockConnection = RunService.RenderStepped:Connect(function()
-                pcall(aimlockUpdate)
-            end)
-        end
-        
-        if not fovUpdateConnection then
-            fovUpdateConnection = RunService.RenderStepped:Connect(function()
-                pcall(updateFOVCircle)
-            end)
-        end
-        
-        -- Listen for left click
-        UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 and not gameProcessed then
-                if CombatModule.Settings.AimlockEnabled then
-                    activateAimlock()
-                end
-            end
-        end)
-    else
-        if aimlockConnection then
-            aimlockConnection:Disconnect()
-            aimlockConnection = nil
-        end
-        if fovUpdateConnection then
-            fovUpdateConnection:Disconnect()
-            fovUpdateConnection = nil
-        end
-        currentTarget = nil
-        aimlockActive = false
-        aimlockCooldown = false
-        if fovCircle then
-            fovCircle.Visible = false
-        end
-    end
 end
 
 function CombatModule.CreateUI(parent)
@@ -469,8 +81,7 @@ function CombatModule.CreateUI(parent)
     hitboxTitle.Parent = combatContent
     yPos = yPos + 40
     
-    -- Hitbox Toggle
-    local function createToggleButton(name, settingKey, position, callback)
+    local function createToggleButton(name, settingsTable, settingKey, position, callback)
         local container = Instance.new("Frame")
         container.Size = UDim2.new(1, -20, 0, 50)
         container.Position = UDim2.new(0, 10, 0, position)
@@ -501,9 +112,9 @@ function CombatModule.CreateUI(parent)
         toggleButton.Parent = container
         
         toggleButton.MouseButton1Click:Connect(function()
-            CombatModule.Settings[settingKey] = not CombatModule.Settings[settingKey]
+            settingsTable[settingKey] = not settingsTable[settingKey]
             
-            if CombatModule.Settings[settingKey] then
+            if settingsTable[settingKey] then
                 toggleButton.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
                 toggleButton.Text = "ENABLED"
             else
@@ -511,16 +122,13 @@ function CombatModule.CreateUI(parent)
                 toggleButton.Text = "DISABLED"
             end
             
-            if callback then callback(CombatModule.Settings[settingKey]) end
+            if callback then callback(settingsTable[settingKey]) end
         end)
         
         return position + 60
     end
     
-    yPos = createToggleButton("Hitbox", "HitboxEnabled", yPos, toggleHitbox)
-    
-    -- Hitbox Size Sliders
-    local function createSlider(name, settingKey, minVal, maxVal, position)
+    local function createSlider(name, settingsTable, settingKey, minVal, maxVal, position)
         local container = Instance.new("Frame")
         container.Size = UDim2.new(1, -20, 0, 50)
         container.Position = UDim2.new(0, 10, 0, position)
@@ -531,7 +139,7 @@ function CombatModule.CreateUI(parent)
         label.Size = UDim2.new(0, 100, 0, 20)
         label.Position = UDim2.new(0, 0, 0, 5)
         label.BackgroundTransparency = 1
-        label.Text = name .. ": " .. CombatModule.Settings[settingKey]
+        label.Text = name .. ": " .. settingsTable[settingKey]
         label.Font = Enum.Font.GothamBold
         label.TextSize = 12
         label.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -547,7 +155,7 @@ function CombatModule.CreateUI(parent)
         sliderBg.Parent = container
         
         local sliderFill = Instance.new("Frame")
-        sliderFill.Size = UDim2.new((CombatModule.Settings[settingKey] - minVal) / (maxVal - minVal), 0, 1, 0)
+        sliderFill.Size = UDim2.new((settingsTable[settingKey] - minVal) / (maxVal - minVal), 0, 1, 0)
         sliderFill.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
         sliderFill.BorderSizePixel = 0
         sliderFill.Parent = sliderBg
@@ -577,7 +185,7 @@ function CombatModule.CreateUI(parent)
                 local percentage = relativeX / sliderBg.AbsoluteSize.X
                 local value = math.floor(minVal + (maxVal - minVal) * percentage)
                 
-                CombatModule.Settings[settingKey] = value
+                settingsTable[settingKey] = value
                 sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
                 label.Text = name .. ": " .. value
             end
@@ -586,12 +194,7 @@ function CombatModule.CreateUI(parent)
         return position + 60
     end
     
-    yPos = createSlider("Hitbox X", "HitboxX", 1, 20, yPos)
-    yPos = createSlider("Hitbox Y", "HitboxY", 1, 20, yPos)
-    yPos = createSlider("Hitbox Z", "HitboxZ", 1, 20, yPos)
-    
-    -- Transparency Slider (0.0 to 1.0)
-    local function createTransparencySlider(name, settingKey, position)
+    local function createTransparencySlider(name, settingsTable, settingKey, position)
         local container = Instance.new("Frame")
         container.Size = UDim2.new(1, -20, 0, 50)
         container.Position = UDim2.new(0, 10, 0, position)
@@ -602,7 +205,7 @@ function CombatModule.CreateUI(parent)
         label.Size = UDim2.new(0, 120, 0, 20)
         label.Position = UDim2.new(0, 0, 0, 5)
         label.BackgroundTransparency = 1
-        label.Text = name .. ": " .. string.format("%.2f", CombatModule.Settings[settingKey])
+        label.Text = name .. ": " .. string.format("%.2f", settingsTable[settingKey])
         label.Font = Enum.Font.GothamBold
         label.TextSize = 12
         label.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -618,7 +221,7 @@ function CombatModule.CreateUI(parent)
         sliderBg.Parent = container
         
         local sliderFill = Instance.new("Frame")
-        sliderFill.Size = UDim2.new(CombatModule.Settings[settingKey], 0, 1, 0)
+        sliderFill.Size = UDim2.new(settingsTable[settingKey], 0, 1, 0)
         sliderFill.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
         sliderFill.BorderSizePixel = 0
         sliderFill.Parent = sliderBg
@@ -646,9 +249,9 @@ function CombatModule.CreateUI(parent)
                 local mouse = UserInputService:GetMouseLocation()
                 local relativeX = math.clamp(mouse.X - sliderBg.AbsolutePosition.X, 0, sliderBg.AbsoluteSize.X)
                 local percentage = relativeX / sliderBg.AbsoluteSize.X
-                local value = percentage -- 0.0 to 1.0
+                local value = percentage
                 
-                CombatModule.Settings[settingKey] = value
+                settingsTable[settingKey] = value
                 sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
                 label.Text = name .. ": " .. string.format("%.2f", value)
             end
@@ -657,82 +260,7 @@ function CombatModule.CreateUI(parent)
         return position + 60
     end
     
-    yPos = createTransparencySlider("Transparency", "HitboxTransparency", yPos)
-    yPos = createTransparencySlider("Preview Transp.", "PreviewTransparency", yPos)
-    
-    -- Preview Position Sliders
-    local function createPositionSlider(name, settingKey, minVal, maxVal, position)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -20, 0, 50)
-        container.Position = UDim2.new(0, 10, 0, position)
-        container.BackgroundTransparency = 1
-        container.Parent = combatContent
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0, 120, 0, 20)
-        label.Position = UDim2.new(0, 0, 0, 5)
-        label.BackgroundTransparency = 1
-        label.Text = name .. ": " .. CombatModule.Settings[settingKey]
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 12
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = container
-        
-        local sliderBg = Instance.new("Frame")
-        sliderBg.Size = UDim2.new(1, -130, 0, 20)
-        sliderBg.Position = UDim2.new(0, 125, 0, 25)
-        sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        sliderBg.BorderSizePixel = 1
-        sliderBg.BorderColor3 = Color3.fromRGB(255, 255, 255)
-        sliderBg.Parent = container
-        
-        local sliderFill = Instance.new("Frame")
-        sliderFill.Size = UDim2.new((CombatModule.Settings[settingKey] - minVal) / (maxVal - minVal), 0, 1, 0)
-        sliderFill.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
-        sliderFill.BorderSizePixel = 0
-        sliderFill.Parent = sliderBg
-        
-        local sliderButton = Instance.new("TextButton")
-        sliderButton.Size = UDim2.new(1, 0, 1, 0)
-        sliderButton.BackgroundTransparency = 1
-        sliderButton.Text = ""
-        sliderButton.Parent = sliderBg
-        
-        local dragging = false
-        
-        sliderButton.MouseButton1Down:Connect(function()
-            dragging = true
-        end)
-        
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = false
-            end
-        end)
-        
-        RunService.RenderStepped:Connect(function()
-            if dragging then
-                local mouse = UserInputService:GetMouseLocation()
-                local relativeX = math.clamp(mouse.X - sliderBg.AbsolutePosition.X, 0, sliderBg.AbsoluteSize.X)
-                local percentage = relativeX / sliderBg.AbsoluteSize.X
-                local value = math.floor(minVal + (maxVal - minVal) * percentage)
-                
-                CombatModule.Settings[settingKey] = value
-                sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
-                label.Text = name .. ": " .. value
-            end
-        end)
-        
-        return position + 60
-    end
-    
-    yPos = createPositionSlider("Preview Pos X", "PreviewPosX", -20, 20, yPos)
-    yPos = createPositionSlider("Preview Pos Y", "PreviewPosY", -20, 20, yPos)
-    yPos = createPositionSlider("Preview Pos Z", "PreviewPosZ", -20, 20, yPos)
-    
-    -- Checkboxes
-    local function createCheckbox(name, settingKey, position)
+    local function createCheckbox(name, settingsTable, settingKey, position)
         local container = Instance.new("Frame")
         container.Size = UDim2.new(1, -20, 0, 30)
         container.Position = UDim2.new(0, 10, 0, position)
@@ -771,15 +299,40 @@ function CombatModule.CreateUI(parent)
         label.Parent = container
         
         checkbox.MouseButton1Click:Connect(function()
-            CombatModule.Settings[settingKey] = not CombatModule.Settings[settingKey]
-            checkmark.Text = CombatModule.Settings[settingKey] and "✓" or ""
+            settingsTable[settingKey] = not settingsTable[settingKey]
+            checkmark.Text = settingsTable[settingKey] and "✓" or ""
         end)
         
         return position + 40
     end
     
-    yPos = createCheckbox("Visibility Check", "VisibilityCheck", yPos)
-    yPos = createCheckbox("Team Check", "TeamCheck", yPos)
+    -- Hitbox controls
+    yPos = createToggleButton("Hitbox", getgenv().HitboxSettings, "Enabled", yPos, function(enabled)
+        if not hitboxLoaded then
+            hitboxLoaded = loadScript(HITBOX_URL)
+            if not hitboxLoaded then
+                warn("Failed to load Hitbox script from GitHub")
+                return
+            end
+        end
+        
+        if enabled then
+            getgenv().HitboxControl.Start()
+        else
+            getgenv().HitboxControl.Stop()
+        end
+    end)
+    
+    yPos = createSlider("Hitbox X", getgenv().HitboxSettings, "HitboxX", 1, 20, yPos)
+    yPos = createSlider("Hitbox Y", getgenv().HitboxSettings, "HitboxY", 1, 20, yPos)
+    yPos = createSlider("Hitbox Z", getgenv().HitboxSettings, "HitboxZ", 1, 20, yPos)
+    yPos = createSlider("Hitbox Pos X", getgenv().HitboxSettings, "HitboxPosX", -10, 10, yPos)
+    yPos = createSlider("Hitbox Pos Y", getgenv().HitboxSettings, "HitboxPosY", -10, 10, yPos)
+    yPos = createSlider("Hitbox Pos Z", getgenv().HitboxSettings, "HitboxPosZ", -10, 10, yPos)
+    yPos = createTransparencySlider("Transparency", getgenv().HitboxSettings, "HitboxTransparency", yPos)
+    yPos = createTransparencySlider("Preview Transp.", getgenv().HitboxSettings, "PreviewTransparency", yPos)
+    yPos = createCheckbox("Visibility Check", getgenv().HitboxSettings, "VisibilityCheck", yPos)
+    yPos = createCheckbox("Team Check", getgenv().HitboxSettings, "TeamCheck", yPos)
     
     yPos = yPos + 10
     
@@ -796,40 +349,38 @@ function CombatModule.CreateUI(parent)
     aimlockTitle.Parent = combatContent
     yPos = yPos + 40
     
-    yPos = createToggleButton("Aimlock", "AimlockEnabled", yPos, toggleAimlock)
-    yPos = createSlider("Smoothness", "AimlockSmoothness", 1, 20, yPos)
-    yPos = createSlider("FOV Size", "FOVSize", 50, 500, yPos)
-    yPos = createCheckbox("Show FOV Circle", "ShowFOV", yPos)
+    yPos = createToggleButton("Aimlock", getgenv().AimlockSettings, "Enabled", yPos, function(enabled)
+        if not aimlockLoaded then
+            aimlockLoaded = loadScript(AIMLOCK_URL)
+            if not aimlockLoaded then
+                warn("Failed to load Aimlock script from GitHub")
+                return
+            end
+        end
+        
+        if enabled then
+            getgenv().AimlockControl.Start()
+        else
+            getgenv().AimlockControl.Stop()
+        end
+    end)
+    
+    yPos = createSlider("Smoothness", getgenv().AimlockSettings, "Smoothness", 1, 20, yPos)
+    yPos = createSlider("FOV Size", getgenv().AimlockSettings, "FOVSize", 50, 500, yPos)
+    yPos = createCheckbox("Show FOV Circle", getgenv().AimlockSettings, "ShowFOV", yPos)
+    yPos = createCheckbox("Visibility Check", getgenv().AimlockSettings, "VisibilityCheck", yPos)
+    yPos = createCheckbox("Team Check", getgenv().AimlockSettings, "TeamCheck", yPos)
     
     combatContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
 
 function CombatModule.Cleanup()
-    if hitboxConnection then
-        hitboxConnection:Disconnect()
-        hitboxConnection = nil
+    if hitboxLoaded and getgenv().HitboxControl then
+        getgenv().HitboxControl.Stop()
     end
-    if aimlockConnection then
-        aimlockConnection:Disconnect()
-        aimlockConnection = nil
+    if aimlockLoaded and getgenv().AimlockControl then
+        getgenv().AimlockControl.Stop()
     end
-    if fovUpdateConnection then
-        fovUpdateConnection:Disconnect()
-        fovUpdateConnection = nil
-    end
-    if fovCircle then
-        fovCircle:Remove()
-        fovCircle = nil
-    end
-    removePreviewBox()
-    restoreHitboxes()
-    aimlockActive = false
-    aimlockCooldown = false
-    currentTarget = nil
-    lockedCharacter = nil
-    PerceivedPos = nil
-    PerceivedVel = Vector3.new()
-    JustLocked = true
 end
 
 return CombatModule
