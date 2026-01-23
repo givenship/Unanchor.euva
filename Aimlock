@@ -1,0 +1,268 @@
+-- Aimlock Script
+-- Upload this to GitHub and use the raw link
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- Get settings from global
+local AimlockSettings = getgenv().AimlockSettings
+if not AimlockSettings then
+    warn("AimlockSettings not found - load Combat GUI first")
+    return
+end
+
+local aimlockConnection = nil
+local fovUpdateConnection = nil
+local currentTarget = nil
+local fovCircle = nil
+local aimlockActive = false
+local aimlockEndTime = 0
+local aimlockCooldown = false
+
+-- Perception variables
+local PerceivedPos = nil
+local PerceivedVel = Vector3.new()
+local LastUpdateTimeX = 0
+local LastUpdateTimeY = 0
+local JustLocked = true
+local lockedCharacter = nil
+
+local function createFOVCircle()
+    if fovCircle then return end
+    
+    fovCircle = Drawing.new("Circle")
+    fovCircle.Thickness = 2
+    fovCircle.NumSides = 64
+    fovCircle.Radius = AimlockSettings.FOVSize
+    fovCircle.Color = Color3.fromRGB(255, 255, 255)
+    fovCircle.Transparency = 0.5
+    fovCircle.Visible = false
+    fovCircle.Filled = false
+end
+
+local function updateFOVCircle()
+    if not fovCircle then return end
+    
+    local mousePos = UserInputService:GetMouseLocation()
+    fovCircle.Position = mousePos
+    fovCircle.Radius = AimlockSettings.FOVSize
+    fovCircle.Visible = AimlockSettings.ShowFOV and AimlockSettings.Enabled
+end
+
+local function isOnSameTeam(player)
+    if not AimlockSettings.TeamCheck then return false end
+    
+    if player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then
+        return true
+    end
+    
+    return false
+end
+
+local function isVisible(targetPart)
+    if not AimlockSettings.VisibilityCheck then return true end
+    
+    local success, result = pcall(function()
+        local origin = Camera.CFrame.Position
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Blacklist
+        params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+        
+        local direction = (targetPart.Position - origin)
+        local rayResult = workspace:Raycast(origin, direction, params)
+        
+        if not rayResult then return true end
+        return rayResult.Instance:IsDescendantOf(targetPart.Parent)
+    end)
+    
+    return success and result or false
+end
+
+local function getClosestPlayerToCursor()
+    local closestPlayer = nil
+    local shortestDistance = AimlockSettings.FOVSize
+    
+    local mousePos = UserInputService:GetMouseLocation()
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            if isOnSameTeam(player) then continue end
+            
+            local character = player.Character
+            local head = character:FindFirstChild("Head")
+            
+            if head then
+                if AimlockSettings.VisibilityCheck and not isVisible(head) then
+                    continue
+                end
+                
+                local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                
+                if onScreen then
+                    local screenPosition = Vector2.new(screenPos.X, screenPos.Y)
+                    local distance = (screenPosition - mousePos).Magnitude
+                    
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+    end
+    
+    return closestPlayer
+end
+
+local function aimlockUpdate()
+    if not AimlockSettings.Enabled then return end
+    
+    if aimlockActive and tick() >= aimlockEndTime then
+        aimlockActive = false
+        aimlockCooldown = true
+        currentTarget = nil
+        lockedCharacter = nil
+        PerceivedPos = nil
+        PerceivedVel = Vector3.new()
+        JustLocked = true
+        
+        task.delay(1, function()
+            aimlockCooldown = false
+        end)
+    end
+    
+    if not aimlockActive then return end
+    
+    if not currentTarget or not currentTarget.Character or not currentTarget.Character.Parent then
+        aimlockActive = false
+        currentTarget = nil
+        lockedCharacter = nil
+        return
+    end
+    
+    lockedCharacter = currentTarget.Character
+    local head = lockedCharacter:FindFirstChild("Head")
+    
+    if not head then
+        aimlockActive = false
+        currentTarget = nil
+        lockedCharacter = nil
+        return
+    end
+    
+    local now = tick()
+    local currentVelocity = head.AssemblyLinearVelocity or Vector3.new()
+    local currentWorldPos = head.Position
+    
+    local ReactionDelayX = AimlockSettings.Smoothness / 100
+    local ReactionDelayY = AimlockSettings.Smoothness / 100
+    
+    if JustLocked then
+        PerceivedPos = currentWorldPos
+        PerceivedVel = currentVelocity
+        LastUpdateTimeX = now
+        LastUpdateTimeY = now
+        JustLocked = false
+    end
+    
+    local LANDING_THRESHOLD = 1
+    local FALLING_THRESHOLD = -10
+    if math.abs(currentVelocity.Y) < LANDING_THRESHOLD and PerceivedVel.Y < FALLING_THRESHOLD then
+        PerceivedPos = Vector3.new(PerceivedPos.X, currentWorldPos.Y, PerceivedPos.Z)
+        PerceivedVel = Vector3.new(PerceivedVel.X, currentVelocity.Y, PerceivedVel.Z)
+        LastUpdateTimeY = now
+    end
+    
+    if now - LastUpdateTimeX >= ReactionDelayX then
+        PerceivedPos = Vector3.new(currentWorldPos.X, PerceivedPos.Y, currentWorldPos.Z)
+        PerceivedVel = Vector3.new(currentVelocity.X, PerceivedVel.Y, currentVelocity.Z)
+        LastUpdateTimeX = now
+    end
+    
+    if now - LastUpdateTimeY >= ReactionDelayY then
+        PerceivedPos = Vector3.new(PerceivedPos.X, currentWorldPos.Y, PerceivedPos.Z)
+        PerceivedVel = Vector3.new(PerceivedVel.X, currentVelocity.Y, PerceivedVel.Z)
+        LastUpdateTimeY = now
+    end
+    
+    local timeSinceX = now - LastUpdateTimeX
+    local timeSinceY = now - LastUpdateTimeY
+    
+    local perceivedX = PerceivedPos.X + PerceivedVel.X * timeSinceX
+    local perceivedY = PerceivedPos.Y + PerceivedVel.Y * timeSinceY
+    local perceivedZ = PerceivedPos.Z + PerceivedVel.Z * timeSinceX
+    local perceivedWorldPos = Vector3.new(perceivedX, perceivedY, perceivedZ)
+    
+    local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, perceivedWorldPos)
+    local smoothness = AimlockSettings.Smoothness
+    local alpha = 1 / math.max(1, smoothness)
+    Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, alpha)
+end
+
+local function activateAimlock()
+    if not AimlockSettings.Enabled then return end
+    if aimlockActive or aimlockCooldown then return end
+    
+    local target = getClosestPlayerToCursor()
+    
+    if target and target.Character then
+        currentTarget = target
+        lockedCharacter = target.Character
+        aimlockActive = true
+        aimlockEndTime = tick() + 1
+        JustLocked = true
+        PerceivedPos = nil
+        PerceivedVel = Vector3.new()
+    end
+end
+
+local function startAimlock()
+    if aimlockConnection then return end
+    
+    createFOVCircle()
+    
+    aimlockConnection = RunService.RenderStepped:Connect(function()
+        pcall(aimlockUpdate)
+    end)
+    
+    fovUpdateConnection = RunService.RenderStepped:Connect(function()
+        pcall(updateFOVCircle)
+    end)
+    
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and not gameProcessed then
+            if AimlockSettings.Enabled then
+                activateAimlock()
+            end
+        end
+    end)
+end
+
+local function stopAimlock()
+    if aimlockConnection then
+        aimlockConnection:Disconnect()
+        aimlockConnection = nil
+    end
+    if fovUpdateConnection then
+        fovUpdateConnection:Disconnect()
+        fovUpdateConnection = nil
+    end
+    currentTarget = nil
+    aimlockActive = false
+    aimlockCooldown = false
+    if fovCircle then
+        fovCircle.Visible = false
+    end
+end
+
+-- Export functions
+getgenv().AimlockControl = {
+    Start = startAimlock,
+    Stop = stopAimlock
+}
+
+print("Aimlock Script Loaded!")
+return true
