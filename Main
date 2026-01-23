@@ -8,7 +8,7 @@ local HttpService = game:GetService("HttpService")
 -- GitHub Raw URLs for modules (REPLACE THESE WITH YOUR ACTUAL GITHUB RAW URLS)
 local ModuleURLs = {
     Visual = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Visual",
-    Combat = "https://raw.githubusercontent.com/givenship/9223-unanchor/refs/heads/main/Combat",
+    Combat = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Combat",
     Player = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/player-module.lua",
     Misc = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/misc-module.lua",
     Settings = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/settings-module.lua"
