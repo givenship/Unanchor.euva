@@ -8,7 +8,7 @@ local HttpService = game:GetService("HttpService")
 
 local CombatModule = {}
 
--- GitHub URLs (REPLACE THESE WITH YOUR ACTUAL RAW GITHUB LINKS)
+-- GitHub URLs
 local HITBOX_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Hitbox"
 local AIMLOCK_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Aimlock"
 
@@ -19,6 +19,9 @@ getgenv().HitboxSettings = {
     HitboxY = 2,
     HitboxZ = 2,
     HitboxTransparency = 0.5,
+    HitboxPosX = 0,
+    HitboxPosY = 0,
+    HitboxPosZ = 0,
     PreviewTransparency = 0.7,
     TeamCheck = false,
     VisibilityCheck = false
@@ -323,6 +326,9 @@ function CombatModule.CreateUI(parent)
     yPos = createSlider("Hitbox X", getgenv().HitboxSettings, "HitboxX", 1, 20, yPos)
     yPos = createSlider("Hitbox Y", getgenv().HitboxSettings, "HitboxY", 1, 20, yPos)
     yPos = createSlider("Hitbox Z", getgenv().HitboxSettings, "HitboxZ", 1, 20, yPos)
+    yPos = createSlider("Hitbox Pos X", getgenv().HitboxSettings, "HitboxPosX", -10, 10, yPos)
+    yPos = createSlider("Hitbox Pos Y", getgenv().HitboxSettings, "HitboxPosY", -10, 10, yPos)
+    yPos = createSlider("Hitbox Pos Z", getgenv().HitboxSettings, "HitboxPosZ", -10, 10, yPos)
     yPos = createTransparencySlider("Transparency", getgenv().HitboxSettings, "HitboxTransparency", yPos)
     yPos = createTransparencySlider("Preview Transp.", getgenv().HitboxSettings, "PreviewTransparency", yPos)
     yPos = createCheckbox("Visibility Check", getgenv().HitboxSettings, "VisibilityCheck", yPos)
