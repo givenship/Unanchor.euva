@@ -15,13 +15,14 @@ local AIMLOCK_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/r
 -- Settings for Hitbox
 getgenv().HitboxSettings = {
     Enabled = false,
+    UsePositionOffset = false, -- Alternative mode (not recommended)
     HitboxX = 2,
     HitboxY = 2,
     HitboxZ = 2,
-    HitboxTransparency = 0.5,
     HitboxPosX = 0,
     HitboxPosY = 0,
     HitboxPosZ = 0,
+    HitboxTransparency = 0.5,
     PreviewTransparency = 0.7,
     TeamCheck = false,
     VisibilityCheck = false
@@ -323,14 +324,37 @@ function CombatModule.CreateUI(parent)
         end
     end)
     
-    yPos = createSlider("Hitbox X", getgenv().HitboxSettings, "HitboxX", 1, 20, yPos)
-    yPos = createSlider("Hitbox Y", getgenv().HitboxSettings, "HitboxY", 1, 20, yPos)
-    yPos = createSlider("Hitbox Z", getgenv().HitboxSettings, "HitboxZ", 1, 20, yPos)
-    yPos = createSlider("Hitbox Pos X", getgenv().HitboxSettings, "HitboxPosX", -10, 10, yPos)
-    yPos = createSlider("Hitbox Pos Y", getgenv().HitboxSettings, "HitboxPosY", -10, 10, yPos)
-    yPos = createSlider("Hitbox Pos Z", getgenv().HitboxSettings, "HitboxPosZ", -10, 10, yPos)
+    yPos = createSlider("Hitbox X (L/R)", getgenv().HitboxSettings, "HitboxX", 1, 20, yPos)
+    yPos = createSlider("Hitbox Y (U/D)", getgenv().HitboxSettings, "HitboxY", 1, 20, yPos)
+    yPos = createSlider("Hitbox Z (F/B)", getgenv().HitboxSettings, "HitboxZ", 1, 20, yPos)
     yPos = createTransparencySlider("Transparency", getgenv().HitboxSettings, "HitboxTransparency", yPos)
     yPos = createTransparencySlider("Preview Transp.", getgenv().HitboxSettings, "PreviewTransparency", yPos)
+    
+    -- Warning label for position offset
+    local warningLabel = Instance.new("TextLabel")
+    warningLabel.Size = UDim2.new(1, -20, 0, 40)
+    warningLabel.Position = UDim2.new(0, 10, 0, yPos)
+    warningLabel.BackgroundTransparency = 1
+    warningLabel.Text = "⚠️ Position Offset (NOT RECOMMENDED - May cause bugs)"
+    warningLabel.Font = Enum.Font.GothamBold
+    warningLabel.TextSize = 12
+    warningLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    warningLabel.TextXAlignment = Enum.TextXAlignment.Left
+    warningLabel.TextWrapped = true
+    warningLabel.Parent = combatContent
+    yPos = yPos + 45
+    
+    -- Position offset toggle
+    yPos = createToggleButton("Use Position Offset", getgenv().HitboxSettings, "UsePositionOffset", yPos, nil)
+    
+    -- Position offset sliders (only show when enabled)
+    local posXSliderY = yPos
+    yPos = createSlider("Position X", getgenv().HitboxSettings, "HitboxPosX", -10, 10, yPos)
+    local posYSliderY = yPos
+    yPos = createSlider("Position Y", getgenv().HitboxSettings, "HitboxPosY", -10, 10, yPos)
+    local posZSliderY = yPos
+    yPos = createSlider("Position Z", getgenv().HitboxSettings, "HitboxPosZ", -10, 10, yPos)
+    
     yPos = createCheckbox("Visibility Check", getgenv().HitboxSettings, "VisibilityCheck", yPos)
     yPos = createCheckbox("Team Check", getgenv().HitboxSettings, "TeamCheck", yPos)
     
