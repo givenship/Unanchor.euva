@@ -28,30 +28,25 @@ local function isOnSameTeam(player)
 end
 
 local function calculateHitboxSize()
-    -- Base HumanoidRootPart size
-    local baseSize = Vector3.new(2, 2, 1)
+    -- Each slider controls ONE direction of expansion
+    -- Base size is 2x2x1
+    -- If Left=10, total width = 10(left) + 2(base) + 0(right) = 12
+    -- But we need to position it so only left expands
     
-    -- Calculate total expansion for each axis
-    local totalX = baseSize.X + HitboxSettings.HitboxLeft + HitboxSettings.HitboxRight
-    local totalY = baseSize.Y + HitboxSettings.HitboxUp + HitboxSettings.HitboxDown
-    local totalZ = baseSize.Z + HitboxSettings.HitboxFront + HitboxSettings.HitboxBack
+    local totalX = HitboxSettings.HitboxLeft + HitboxSettings.HitboxRight
+    local totalY = HitboxSettings.HitboxUp + HitboxSettings.HitboxDown
+    local totalZ = HitboxSettings.HitboxFront + HitboxSettings.HitboxBack
     
     return Vector3.new(totalX, totalY, totalZ)
 end
 
 local function calculateHitboxOffset()
-    -- Calculate offset to shift hitbox in the correct direction
-    -- If Left=10, Right=0: need to shift LEFT by 5 (half of 10)
-    -- If Left=0, Right=10: need to shift RIGHT by 5 (half of 10)
-    -- Formula: offset = (expansion in positive direction - expansion in negative direction) / 2
+    -- Offset determines which side the expansion happens on
+    -- If Left=10, Right=0: offset -5 (shifts entire hitbox left by half)
+    -- This makes it expand to the LEFT only
     
-    -- X axis: Right is positive, Left is negative
     local offsetX = (HitboxSettings.HitboxRight - HitboxSettings.HitboxLeft) / 2
-    
-    -- Y axis: Up is positive, Down is negative
     local offsetY = (HitboxSettings.HitboxUp - HitboxSettings.HitboxDown) / 2
-    
-    -- Z axis: Front is negative (forward in Roblox), Back is positive
     local offsetZ = (HitboxSettings.HitboxBack - HitboxSettings.HitboxFront) / 2
     
     return Vector3.new(offsetX, offsetY, offsetZ)
@@ -128,7 +123,7 @@ local function createCustomHitbox(player, character)
     customHitbox.Name = "CustomHitbox"
     customHitbox.Size = calculateHitboxSize()
     customHitbox.Transparency = HitboxSettings.HitboxTransparency
-    customHitbox.CanCollide = true
+    customHitbox.CanCollide = false -- Don't collide to prevent physics bugs
     customHitbox.Anchored = false
     customHitbox.Massless = true
     customHitbox.Material = Enum.Material.ForceField
@@ -166,9 +161,7 @@ local function createCustomHitbox(player, character)
         originalHitboxSizes[player] = hrp.Size
     end
     
-    -- Make original HRP invisible and non-collidable
-    hrp.Transparency = 1
-    hrp.CanCollide = false
+    -- Don't modify original HRP - keep it normal
 end
 
 local function removeCustomHitbox(player)
@@ -179,15 +172,7 @@ local function removeCustomHitbox(player)
         customHitboxParts[player] = nil
     end
     
-    -- Restore HRP
-    if player.Character then
-        local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-        if hrp and originalHitboxSizes[player] then
-            hrp.Transparency = 0
-            hrp.CanCollide = true
-            hrp.Size = originalHitboxSizes[player]
-        end
-    end
+    originalHitboxSizes[player] = nil
 end
 
 local function updateCustomHitbox(player, character)
