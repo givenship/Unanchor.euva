@@ -4,7 +4,6 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
 -- Get settings from global
@@ -14,93 +13,126 @@ if not AutoDefuseSettings then
     return
 end
 
-local highlightCheckConnection = nil
-local teamCheckConnection = nil
-local monstersTeamPlayers = {}
+local animationConnections = {}
+local monitorConnection = nil
 
--- Update Monsters team players list
-local function updateMonstersTeam()
-    monstersTeamPlayers = {}
-    
-    for _, player in pairs(Players:GetPlayers()) do
-        if player.Team and player.Team.Name == "Monsters" then
-            monstersTeamPlayers[player] = true
+-- Target animation IDs
+local DEFUSE_ANIMATIONS = {
+    "rbxassetid://99918936475651",
+    "rbxassetid://115241304811827"
+}
+
+-- Check if animation ID matches defuse animations
+local function isDefuseAnimation(animationId)
+    for _, targetId in pairs(DEFUSE_ANIMATIONS) do
+        if animationId == targetId then
+            return true
         end
+    end
+    return false
+end
+
+-- Get distance from local player
+local function getDistance(character)
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return math.huge
+    end
+    
+    local targetHRP = character:FindFirstChild("HumanoidRootPart")
+    if not targetHRP then return math.huge end
+    
+    return (LocalPlayer.Character.HumanoidRootPart.Position - targetHRP.Position).Magnitude
+end
+
+-- Monitor character's animations
+local function monitorCharacter(character)
+    if animationConnections[character] then return end
+    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then return end
+    
+    -- Connect to AnimationPlayed event
+    animationConnections[character] = animator.AnimationPlayed:Connect(function(animationTrack)
+        if not AutoDefuseSettings.Enabled then return end
+        
+        -- Check distance (30 studs)
+        if getDistance(character) > 30 then return end
+        
+        -- Get animation ID
+        local animationId = animationTrack.Animation and animationTrack.Animation.AnimationId
+        if not animationId then return end
+        
+        -- Check if it's a defuse animation
+        if isDefuseAnimation(animationId) then
+            -- Wait for delay (from slider)
+            task.wait(AutoDefuseSettings.Delay or 3)
+            print("Defused")
+        end
+    end)
+end
+
+-- Stop monitoring a character
+local function stopMonitoringCharacter(character)
+    if animationConnections[character] then
+        animationConnections[character]:Disconnect()
+        animationConnections[character] = nil
     end
 end
 
--- Check if character is in Monsters team (using cached list)
-local function isMonsterTeam(character)
-    local player = Players:GetPlayerFromCharacter(character)
-    if not player then return false end
-    return monstersTeamPlayers[player] == true
-end
-
--- Check workspace for Highlights
-local function checkForHighlights()
+-- Monitor all characters in workspace
+local function monitorAllCharacters()
     if not AutoDefuseSettings.Enabled then return end
     
-    -- Loop through all characters in workspace
     for _, character in pairs(Workspace:GetChildren()) do
         if character:IsA("Model") and character:FindFirstChild("Humanoid") then
-            -- Filter: Only Monsters team
-            if isMonsterTeam(character) then
-                -- Look for Highlight named "Highlight"
-                local highlight = character:FindFirstChild("Highlight")
-                if highlight and highlight:IsA("Highlight") then
-                    -- Found it! Click instantly
-                    print("Highlight found")
-                    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                    task.wait(0.05)
-                    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-                end
+            local player = Players:GetPlayerFromCharacter(character)
+            if player and player ~= LocalPlayer then
+                monitorCharacter(character)
             end
         end
     end
 end
 
--- Team check loop (every 5 seconds)
-local function startTeamCheck()
-    if teamCheckConnection then return end
-    
-    teamCheckConnection = task.spawn(function()
-        while AutoDefuseSettings.Enabled do
-            updateMonstersTeam()
-            task.wait(5)
-        end
-    end)
-end
-
 -- Start monitoring
 local function startMonitoring()
-    if highlightCheckConnection then return end
+    if monitorConnection then return end
     
-    -- Initial team check
-    updateMonstersTeam()
+    -- Monitor existing characters
+    monitorAllCharacters()
     
-    -- Start team checking every 5 seconds
-    startTeamCheck()
-    
-    -- Check every 0.01 seconds (Heartbeat runs ~60 FPS)
-    highlightCheckConnection = RunService.Heartbeat:Connect(function()
-        pcall(checkForHighlights)
+    -- Monitor new characters being added
+    monitorConnection = Workspace.ChildAdded:Connect(function(child)
+        if child:IsA("Model") and child:FindFirstChild("Humanoid") then
+            task.wait(0.1) -- Wait for character to fully load
+            local player = Players:GetPlayerFromCharacter(child)
+            if player and player ~= LocalPlayer then
+                monitorCharacter(child)
+            end
+        end
     end)
     
-    print("Auto Defuse monitoring started")
+    -- Clean up when characters are removed
+    Workspace.ChildRemoved:Connect(function(child)
+        stopMonitoringCharacter(child)
+    end)
+    
+    print("Auto Defuse monitoring animations")
 end
 
 local function stopMonitoring()
-    if highlightCheckConnection then
-        highlightCheckConnection:Disconnect()
-        highlightCheckConnection = nil
+    if monitorConnection then
+        monitorConnection:Disconnect()
+        monitorConnection = nil
     end
     
-    if teamCheckConnection then
-        task.cancel(teamCheckConnection)
-        teamCheckConnection = nil
+    -- Disconnect all animation connections
+    for character, connection in pairs(animationConnections) do
+        connection:Disconnect()
     end
-    
-    monstersTeamPlayers = {}
+    animationConnections = {}
 end
 
 -- Export control functions
@@ -108,7 +140,7 @@ getgenv().AutoDefuseControl = {
     Start = function()
         AutoDefuseSettings.Enabled = true
         startMonitoring()
-        print("Auto Defuse enabled")
+        print("Auto Defuse enabled - Monitoring animations")
     end,
     Stop = function()
         AutoDefuseSettings.Enabled = false
