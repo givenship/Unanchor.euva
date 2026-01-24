@@ -44,11 +44,8 @@ local function createPreviewBox()
     
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = LocalPlayer.Character.HumanoidRootPart
-        previewBox.CFrame = hrp.CFrame * CFrame.new(
-            HitboxSettings.HitboxPosX,
-            HitboxSettings.HitboxPosY,
-            HitboxSettings.HitboxPosZ
-        )
+        -- Position preview to the side (5 studs right)
+        previewBox.CFrame = hrp.CFrame * CFrame.new(5, 0, 0)
     end
     
     previewBox.Parent = workspace
@@ -66,11 +63,8 @@ local function updatePreviewBox()
     
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = LocalPlayer.Character.HumanoidRootPart
-        previewBox.CFrame = hrp.CFrame * CFrame.new(
-            HitboxSettings.HitboxPosX,
-            HitboxSettings.HitboxPosY,
-            HitboxSettings.HitboxPosZ
-        )
+        -- Position preview box to the side to show size
+        previewBox.CFrame = hrp.CFrame * CFrame.new(5, 0, 0)
     end
 end
 
@@ -113,7 +107,7 @@ local function applyHitbox()
                     originalHitboxSizes[player]["HumanoidRootPart"] = hrp.Size
                 end
                 
-                -- Apply hitbox with position offset
+                -- Apply hitbox size only (no position change to character)
                 hrp.Size = Vector3.new(
                     HitboxSettings.HitboxX,
                     HitboxSettings.HitboxY,
@@ -121,13 +115,6 @@ local function applyHitbox()
                 )
                 hrp.Transparency = HitboxSettings.HitboxTransparency
                 hrp.CanCollide = false
-                
-                -- Apply position offset
-                hrp.CFrame = hrp.CFrame * CFrame.new(
-                    HitboxSettings.HitboxPosX,
-                    HitboxSettings.HitboxPosY,
-                    HitboxSettings.HitboxPosZ
-                )
             end
         end
     end
