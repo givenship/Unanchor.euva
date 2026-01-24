@@ -1,515 +1,290 @@
--- Combat Module - Main GUI
--- Loads Hitbox and Aimlock scripts from GitHub
+-- Hitbox Script
+-- Upload this to GitHub and use the raw link
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
 
-local CombatModule = {}
+-- Get settings from global
+local HitboxSettings = getgenv().HitboxSettings
+if not HitboxSettings then
+    warn("HitboxSettings not found - load Combat GUI first")
+    return
+end
 
--- GitHub URLs
-local HITBOX_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Hitbox"
-local AIMLOCK_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Aimlock"
+local hitboxConnection = nil
+local originalHitboxSizes = {}
+local previewBox = nil
+local customHitboxParts = {}
 
--- Settings for Hitbox
-getgenv().HitboxSettings = {
-    Enabled = false,
-    UsePositionOffset = false, -- Alternative mode (not recommended)
-    HitboxLeft = 2,
-    HitboxRight = 2,
-    HitboxUp = 2,
-    HitboxDown = 2,
-    HitboxFront = 2,
-    HitboxBack = 2,
-    HitboxPosX = 0,
-    HitboxPosY = 0,
-    HitboxPosZ = 0,
-    HitboxTransparency = 0.5,
-    PreviewTransparency = 0.7,
-    TeamCheck = false,
-    VisibilityCheck = false
-}
-
--- Settings for Aimlock
-getgenv().AimlockSettings = {
-    Enabled = false,
-    Smoothness = 1,
-    ShowFOV = false,
-    FOVSize = 100,
-    TeamCheck = false,
-    VisibilityCheck = false
-}
-
-local hitboxLoaded = false
-local aimlockLoaded = false
-
-local function loadScript(url)
-    local success, result = pcall(function()
-        return game:HttpGet(url)
-    end)
+local function isOnSameTeam(player)
+    if not HitboxSettings.TeamCheck then return false end
     
-    if success then
-        local loadSuccess, loadResult = pcall(function()
-            return loadstring(result)()
-        end)
-        return loadSuccess
+    if player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then
+        return true
     end
     
     return false
 end
 
-function CombatModule.CreateUI(parent)
-    local combatContent = Instance.new("ScrollingFrame")
-    combatContent.Name = "CombatContent"
-    combatContent.Size = UDim2.new(1, -20, 1, -20)
-    combatContent.Position = UDim2.new(0, 10, 0, 10)
-    combatContent.BackgroundTransparency = 1
-    combatContent.BorderSizePixel = 0
-    combatContent.ScrollBarThickness = 4
-    combatContent.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
-    combatContent.Parent = parent
+local function calculateHitboxSize()
+    local sizeX = HitboxSettings.HitboxX
+    local sizeY = HitboxSettings.HitboxY
+    local sizeZ = HitboxSettings.HitboxZ
     
-    local yPos = 10
-    
-    -- Hitbox Section
-    local hitboxTitle = Instance.new("TextLabel")
-    hitboxTitle.Size = UDim2.new(1, -20, 0, 30)
-    hitboxTitle.Position = UDim2.new(0, 10, 0, yPos)
-    hitboxTitle.BackgroundTransparency = 1
-    hitboxTitle.Text = "HITBOX ADJUSTMENT"
-    hitboxTitle.Font = Enum.Font.GothamBlack
-    hitboxTitle.TextSize = 16
-    hitboxTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    hitboxTitle.TextXAlignment = Enum.TextXAlignment.Left
-    hitboxTitle.Parent = combatContent
-    yPos = yPos + 40
-    
-    local function createToggleButton(name, settingsTable, settingKey, position, callback)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -20, 0, 50)
-        container.Position = UDim2.new(0, 10, 0, position)
-        container.BackgroundTransparency = 1
-        container.Parent = combatContent
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.4, -10, 0, 40)
-        label.Position = UDim2.new(0, 0, 0, 5)
-        label.BackgroundTransparency = 1
-        label.Text = name
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 14
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = container
-        
-        local toggleButton = Instance.new("TextButton")
-        toggleButton.Size = UDim2.new(0, 140, 0, 40)
-        toggleButton.Position = UDim2.new(1, -140, 0, 5)
-        toggleButton.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
-        toggleButton.BorderSizePixel = 0
-        toggleButton.Text = "DISABLED"
-        toggleButton.Font = Enum.Font.GothamBlack
-        toggleButton.TextSize = 14
-        toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        toggleButton.AutoButtonColor = false
-        toggleButton.Parent = container
-        
-        toggleButton.MouseButton1Click:Connect(function()
-            settingsTable[settingKey] = not settingsTable[settingKey]
-            
-            if settingsTable[settingKey] then
-                toggleButton.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
-                toggleButton.Text = "ENABLED"
-            else
-                toggleButton.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
-                toggleButton.Text = "DISABLED"
-            end
-            
-            if callback then callback(settingsTable[settingKey]) end
-        end)
-        
-        return position + 60
+    -- For position offset mode, always use full size
+    if HitboxSettings.UsePositionOffset then
+        return Vector3.new(sizeX, sizeY, sizeZ)
     end
     
-    local function createSlider(name, settingsTable, settingKey, minVal, maxVal, position)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -20, 0, 50)
-        container.Position = UDim2.new(0, 10, 0, position)
-        container.BackgroundTransparency = 1
-        container.Parent = combatContent
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0, 100, 0, 20)
-        label.Position = UDim2.new(0, 0, 0, 5)
-        label.BackgroundTransparency = 1
-        label.Text = name .. ": " .. settingsTable[settingKey]
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 12
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = container
-        
-        local sliderBg = Instance.new("Frame")
-        sliderBg.Size = UDim2.new(1, -110, 0, 20)
-        sliderBg.Position = UDim2.new(0, 105, 0, 25)
-        sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        sliderBg.BorderSizePixel = 1
-        sliderBg.BorderColor3 = Color3.fromRGB(255, 255, 255)
-        sliderBg.Parent = container
-        
-        local sliderFill = Instance.new("Frame")
-        sliderFill.Size = UDim2.new((settingsTable[settingKey] - minVal) / (maxVal - minVal), 0, 1, 0)
-        sliderFill.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
-        sliderFill.BorderSizePixel = 0
-        sliderFill.Parent = sliderBg
-        
-        local sliderButton = Instance.new("TextButton")
-        sliderButton.Size = UDim2.new(1, 0, 1, 0)
-        sliderButton.BackgroundTransparency = 1
-        sliderButton.Text = ""
-        sliderButton.Parent = sliderBg
-        
-        local dragging = false
-        
-        sliderButton.MouseButton1Down:Connect(function()
-            dragging = true
-        end)
-        
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = false
-            end
-        end)
-        
-        RunService.RenderStepped:Connect(function()
-            if dragging then
-                local mouse = UserInputService:GetMouseLocation()
-                local relativeX = math.clamp(mouse.X - sliderBg.AbsolutePosition.X, 0, sliderBg.AbsoluteSize.X)
-                local percentage = relativeX / sliderBg.AbsoluteSize.X
-                local value = math.floor(minVal + (maxVal - minVal) * percentage)
-                
-                settingsTable[settingKey] = value
-                sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
-                label.Text = name .. ": " .. value
-            end
-        end)
-        
-        return position + 60
-    end
+    -- For normal mode, apply directional expansion
+    -- The original HRP is 2x2x1, we expand from that base
+    local baseSize = Vector3.new(2, 2, 1)
     
-    local function createTransparencySlider(name, settingsTable, settingKey, position)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -20, 0, 50)
-        container.Position = UDim2.new(0, 10, 0, position)
-        container.BackgroundTransparency = 1
-        container.Parent = combatContent
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0, 120, 0, 20)
-        label.Position = UDim2.new(0, 0, 0, 5)
-        label.BackgroundTransparency = 1
-        label.Text = name .. ": " .. string.format("%.2f", settingsTable[settingKey])
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 12
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = container
-        
-        local sliderBg = Instance.new("Frame")
-        sliderBg.Size = UDim2.new(1, -130, 0, 20)
-        sliderBg.Position = UDim2.new(0, 125, 0, 25)
-        sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        sliderBg.BorderSizePixel = 1
-        sliderBg.BorderColor3 = Color3.fromRGB(255, 255, 255)
-        sliderBg.Parent = container
-        
-        local sliderFill = Instance.new("Frame")
-        sliderFill.Size = UDim2.new(settingsTable[settingKey], 0, 1, 0)
-        sliderFill.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
-        sliderFill.BorderSizePixel = 0
-        sliderFill.Parent = sliderBg
-        
-        local sliderButton = Instance.new("TextButton")
-        sliderButton.Size = UDim2.new(1, 0, 1, 0)
-        sliderButton.BackgroundTransparency = 1
-        sliderButton.Text = ""
-        sliderButton.Parent = sliderBg
-        
-        local dragging = false
-        
-        sliderButton.MouseButton1Down:Connect(function()
-            dragging = true
-        end)
-        
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = false
-            end
-        end)
-        
-        RunService.RenderStepped:Connect(function()
-            if dragging then
-                local mouse = UserInputService:GetMouseLocation()
-                local relativeX = math.clamp(mouse.X - sliderBg.AbsolutePosition.X, 0, sliderBg.AbsoluteSize.X)
-                local percentage = relativeX / sliderBg.AbsoluteSize.X
-                local value = percentage
-                
-                settingsTable[settingKey] = value
-                sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
-                label.Text = name .. ": " .. string.format("%.2f", value)
-            end
-        end)
-        
-        return position + 60
-    end
-    
-    local function createCheckbox(name, settingsTable, settingKey, position)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -20, 0, 30)
-        container.Position = UDim2.new(0, 10, 0, position)
-        container.BackgroundTransparency = 1
-        container.Parent = combatContent
-        
-        local checkbox = Instance.new("TextButton")
-        checkbox.Size = UDim2.new(0, 20, 0, 20)
-        checkbox.Position = UDim2.new(0, 0, 0, 5)
-        checkbox.BackgroundColor3 = Color3.fromRGB(124, 124, 124)
-        checkbox.BackgroundTransparency = 0.3
-        checkbox.BorderSizePixel = 1
-        checkbox.BorderColor3 = Color3.fromRGB(255, 255, 255)
-        checkbox.Text = ""
-        checkbox.AutoButtonColor = false
-        checkbox.Parent = container
-        
-        local checkmark = Instance.new("TextLabel")
-        checkmark.Size = UDim2.new(1, 0, 1, 0)
-        checkmark.BackgroundTransparency = 1
-        checkmark.Text = ""
-        checkmark.Font = Enum.Font.GothamBlack
-        checkmark.TextSize = 16
-        checkmark.TextColor3 = Color3.fromRGB(255, 255, 255)
-        checkmark.Parent = checkbox
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -30, 0, 30)
-        label.Position = UDim2.new(0, 30, 0, 0)
-        label.BackgroundTransparency = 1
-        label.Text = name
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 14
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = container
-        
-        checkbox.MouseButton1Click:Connect(function()
-            settingsTable[settingKey] = not settingsTable[settingKey]
-            checkmark.Text = settingsTable[settingKey] and "✓" or ""
-        end)
-        
-        return position + 40
-    end
-    
-    -- Hitbox controls
-    yPos = createToggleButton("Hitbox", getgenv().HitboxSettings, "Enabled", yPos, function(enabled)
-        if not hitboxLoaded then
-            hitboxLoaded = loadScript(HITBOX_URL)
-            if not hitboxLoaded then
-                warn("Failed to load Hitbox script from GitHub")
-                return
-            end
-        end
-        
-        if enabled then
-            getgenv().HitboxControl.Start()
-        else
-            getgenv().HitboxControl.Stop()
-        end
-    end)
-    
-    -- Hitbox directional controls with buttons
-    local function createDirectionalControl(name, leftKey, rightKey, minVal, maxVal, position)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -20, 0, 70)
-        container.Position = UDim2.new(0, 10, 0, position)
-        container.BackgroundTransparency = 1
-        container.Parent = combatContent
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0, 120, 0, 20)
-        label.Position = UDim2.new(0, 0, 0, 0)
-        label.BackgroundTransparency = 1
-        label.Text = name .. ": " .. getgenv().HitboxSettings[leftKey] + getgenv().HitboxSettings[rightKey]
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 14
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = container
-        
-        -- Left/Down/Back button
-        local leftButton = Instance.new("TextButton")
-        leftButton.Size = UDim2.new(0, 60, 0, 40)
-        leftButton.Position = UDim2.new(0, 0, 0, 25)
-        leftButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        leftButton.BorderSizePixel = 1
-        leftButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
-        leftButton.Text = name:match("%((.-)%)"):sub(1, 1) -- Get first letter (L/U/F)
-        leftButton.Font = Enum.Font.GothamBlack
-        leftButton.TextSize = 18
-        leftButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        leftButton.AutoButtonColor = false
-        leftButton.Parent = container
-        
-        -- Right/Up/Front button
-        local rightButton = Instance.new("TextButton")
-        rightButton.Size = UDim2.new(0, 60, 0, 40)
-        rightButton.Position = UDim2.new(0, 70, 0, 25)
-        rightButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        rightButton.BorderSizePixel = 1
-        rightButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
-        rightButton.Text = name:match("%((.-)%)"):sub(3, 3) -- Get third letter (R/D/B)
-        rightButton.Font = Enum.Font.GothamBlack
-        rightButton.TextSize = 18
-        rightButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        rightButton.AutoButtonColor = false
-        rightButton.Parent = container
-        
-        -- Slider for visual feedback
-        local sliderBg = Instance.new("Frame")
-        sliderBg.Size = UDim2.new(1, -140, 0, 40)
-        sliderBg.Position = UDim2.new(0, 135, 0, 25)
-        sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        sliderBg.BorderSizePixel = 1
-        sliderBg.BorderColor3 = Color3.fromRGB(255, 255, 255)
-        sliderBg.Parent = container
-        
-        local sliderFill = Instance.new("Frame")
-        local totalValue = getgenv().HitboxSettings[leftKey] + getgenv().HitboxSettings[rightKey]
-        sliderFill.Size = UDim2.new((totalValue - minVal) / (maxVal - minVal), 0, 1, 0)
-        sliderFill.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
-        sliderFill.BorderSizePixel = 0
-        sliderFill.Parent = sliderBg
-        
-        local function updateDisplay()
-            local totalValue = getgenv().HitboxSettings[leftKey] + getgenv().HitboxSettings[rightKey]
-            label.Text = name .. ": " .. totalValue
-            sliderFill.Size = UDim2.new((totalValue - minVal) / (maxVal - minVal), 0, 1, 0)
-        end
-        
-        leftButton.MouseButton1Click:Connect(function()
-            if getgenv().HitboxSettings[leftKey] > 0 then
-                getgenv().HitboxSettings[leftKey] = getgenv().HitboxSettings[leftKey] - 1
-                updateDisplay()
-            end
-        end)
-        
-        rightButton.MouseButton1Click:Connect(function()
-            if getgenv().HitboxSettings[rightKey] < maxVal then
-                getgenv().HitboxSettings[rightKey] = getgenv().HitboxSettings[rightKey] + 1
-                updateDisplay()
-            end
-        end)
-        
-        leftButton.MouseEnter:Connect(function()
-            leftButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-        end)
-        
-        leftButton.MouseLeave:Connect(function()
-            leftButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        end)
-        
-        rightButton.MouseEnter:Connect(function()
-            rightButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-        end)
-        
-        rightButton.MouseLeave:Connect(function()
-            rightButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        end)
-        
-        return position + 80
-    end
-    
-    yPos = createDirectionalControl("Hitbox X (L/R)", "HitboxLeft", "HitboxRight", 0, 20, yPos)
-    yPos = createDirectionalControl("Hitbox Y (U/D)", "HitboxDown", "HitboxUp", 0, 20, yPos)
-    yPos = createDirectionalControl("Hitbox Z (F/B)", "HitboxBack", "HitboxFront", 0, 20, yPos)
-    yPos = createTransparencySlider("Transparency", getgenv().HitboxSettings, "HitboxTransparency", yPos)
-    yPos = createTransparencySlider("Preview Transp.", getgenv().HitboxSettings, "PreviewTransparency", yPos)
-    
-    -- Warning label for position offset
-    local warningLabel = Instance.new("TextLabel")
-    warningLabel.Size = UDim2.new(1, -20, 0, 40)
-    warningLabel.Position = UDim2.new(0, 10, 0, yPos)
-    warningLabel.BackgroundTransparency = 1
-    warningLabel.Text = "⚠️ Position Offset (NOT RECOMMENDED - May cause bugs)"
-    warningLabel.Font = Enum.Font.GothamBold
-    warningLabel.TextSize = 12
-    warningLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-    warningLabel.TextXAlignment = Enum.TextXAlignment.Left
-    warningLabel.TextWrapped = true
-    warningLabel.Parent = combatContent
-    yPos = yPos + 45
-    
-    -- Position offset toggle
-    yPos = createToggleButton("Use Position Offset", getgenv().HitboxSettings, "UsePositionOffset", yPos, nil)
-    
-    -- Position offset sliders (only show when enabled)
-    local posXSliderY = yPos
-    yPos = createSlider("Position X", getgenv().HitboxSettings, "HitboxPosX", -10, 10, yPos)
-    local posYSliderY = yPos
-    yPos = createSlider("Position Y", getgenv().HitboxSettings, "HitboxPosY", -10, 10, yPos)
-    local posZSliderY = yPos
-    yPos = createSlider("Position Z", getgenv().HitboxSettings, "HitboxPosZ", -10, 10, yPos)
-    
-    yPos = createCheckbox("Visibility Check", getgenv().HitboxSettings, "VisibilityCheck", yPos)
-    yPos = createCheckbox("Team Check", getgenv().HitboxSettings, "TeamCheck", yPos)
-    
-    yPos = yPos + 10
-    
-    -- Aimlock Section
-    local aimlockTitle = Instance.new("TextLabel")
-    aimlockTitle.Size = UDim2.new(1, -20, 0, 30)
-    aimlockTitle.Position = UDim2.new(0, 10, 0, yPos)
-    aimlockTitle.BackgroundTransparency = 1
-    aimlockTitle.Text = "AIMLOCK"
-    aimlockTitle.Font = Enum.Font.GothamBlack
-    aimlockTitle.TextSize = 16
-    aimlockTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    aimlockTitle.TextXAlignment = Enum.TextXAlignment.Left
-    aimlockTitle.Parent = combatContent
-    yPos = yPos + 40
-    
-    yPos = createToggleButton("Aimlock", getgenv().AimlockSettings, "Enabled", yPos, function(enabled)
-        if not aimlockLoaded then
-            aimlockLoaded = loadScript(AIMLOCK_URL)
-            if not aimlockLoaded then
-                warn("Failed to load Aimlock script from GitHub")
-                return
-            end
-        end
-        
-        if enabled then
-            getgenv().AimlockControl.Start()
-        else
-            getgenv().AimlockControl.Stop()
-        end
-    end)
-    
-    yPos = createSlider("Smoothness", getgenv().AimlockSettings, "Smoothness", 1, 20, yPos)
-    yPos = createSlider("FOV Size", getgenv().AimlockSettings, "FOVSize", 50, 500, yPos)
-    yPos = createCheckbox("Show FOV Circle", getgenv().AimlockSettings, "ShowFOV", yPos)
-    yPos = createCheckbox("Visibility Check", getgenv().AimlockSettings, "VisibilityCheck", yPos)
-    yPos = createCheckbox("Team Check", getgenv().AimlockSettings, "TeamCheck", yPos)
-    
-    combatContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
+    return Vector3.new(
+        baseSize.X + sizeX,
+        baseSize.Y + sizeY,
+        baseSize.Z + sizeZ
+    )
 end
 
-function CombatModule.Cleanup()
-    if hitboxLoaded and getgenv().HitboxControl then
-        getgenv().HitboxControl.Stop()
+local function createPreviewBox()
+    if previewBox then return end
+    
+    previewBox = Instance.new("Part")
+    previewBox.Name = "HitboxPreview"
+    previewBox.Anchored = true
+    previewBox.CanCollide = false
+    previewBox.Material = Enum.Material.ForceField
+    previewBox.Color = Color3.fromRGB(255, 0, 0)
+    previewBox.Transparency = HitboxSettings.PreviewTransparency
+    previewBox.Size = calculateHitboxSize()
+    
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = LocalPlayer.Character.HumanoidRootPart
+        if HitboxSettings.UsePositionOffset then
+            previewBox.CFrame = hrp.CFrame * CFrame.new(
+                HitboxSettings.HitboxPosX,
+                HitboxSettings.HitboxPosY,
+                HitboxSettings.HitboxPosZ
+            )
+        else
+            previewBox.CFrame = hrp.CFrame * CFrame.new(5, 0, 0)
+        end
     end
-    if aimlockLoaded and getgenv().AimlockControl then
-        getgenv().AimlockControl.Stop()
+    
+    previewBox.Parent = workspace
+end
+
+local function updatePreviewBox()
+    if not previewBox then return end
+    
+    previewBox.Size = calculateHitboxSize()
+    previewBox.Transparency = HitboxSettings.PreviewTransparency
+    
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = LocalPlayer.Character.HumanoidRootPart
+        if HitboxSettings.UsePositionOffset then
+            previewBox.CFrame = hrp.CFrame * CFrame.new(
+                HitboxSettings.HitboxPosX,
+                HitboxSettings.HitboxPosY,
+                HitboxSettings.HitboxPosZ
+            )
+        else
+            previewBox.CFrame = hrp.CFrame * CFrame.new(5, 0, 0)
+        end
     end
 end
 
-return CombatModule
+local function removePreviewBox()
+    if previewBox then
+        previewBox:Destroy()
+        previewBox = nil
+    end
+end
+
+-- Position offset mode (alternative, not recommended)
+local function createCustomHitbox(player, character)
+    if customHitboxParts[player] then
+        customHitboxParts[player]:Destroy()
+        customHitboxParts[player] = nil
+    end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    local customHitbox = Instance.new("Part")
+    customHitbox.Name = "CustomHitbox"
+    customHitbox.Size = calculateHitboxSize()
+    customHitbox.Transparency = HitboxSettings.HitboxTransparency
+    customHitbox.CanCollide = false
+    customHitbox.Anchored = false
+    customHitbox.Massless = true
+    customHitbox.Material = Enum.Material.ForceField
+    customHitbox.Color = Color3.fromRGB(255, 0, 0)
+    customHitbox.CanQuery = false
+    customHitbox.CanTouch = false
+    
+    local attachment0 = Instance.new("Attachment")
+    attachment0.Parent = hrp
+    attachment0.Position = Vector3.new(
+        HitboxSettings.HitboxPosX,
+        HitboxSettings.HitboxPosY,
+        HitboxSettings.HitboxPosZ
+    )
+    
+    local attachment1 = Instance.new("Attachment")
+    attachment1.Parent = customHitbox
+    
+    local alignPosition = Instance.new("AlignPosition")
+    alignPosition.Attachment0 = attachment1
+    alignPosition.Attachment1 = attachment0
+    alignPosition.MaxForce = 9e9
+    alignPosition.MaxVelocity = math.huge
+    alignPosition.Responsiveness = 200
+    alignPosition.ApplyAtCenterOfMass = true
+    alignPosition.Parent = customHitbox
+    
+    local alignOrientation = Instance.new("AlignOrientation")
+    alignOrientation.Attachment0 = attachment1
+    alignOrientation.Attachment1 = attachment0
+    alignOrientation.MaxTorque = 9e9
+    alignOrientation.Responsiveness = 200
+    alignOrientation.Parent = customHitbox
+    
+    customHitbox.Parent = character
+    customHitboxParts[player] = {
+        part = customHitbox,
+        attachment = attachment0
+    }
+    
+    if not originalHitboxSizes[player] then
+        originalHitboxSizes[player] = hrp.Size
+    end
+end
+
+local function removeCustomHitbox(player)
+    if customHitboxParts[player] then
+        if customHitboxParts[player].part then
+            customHitboxParts[player].part:Destroy()
+        end
+        customHitboxParts[player] = nil
+    end
+end
+
+local function updateCustomHitbox(player, character)
+    if not customHitboxParts[player] then return end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    local customHitbox = customHitboxParts[player].part
+    local attachment = customHitboxParts[player].attachment
+    
+    customHitbox.Size = calculateHitboxSize()
+    customHitbox.Transparency = HitboxSettings.HitboxTransparency
+    
+    attachment.Position = Vector3.new(
+        HitboxSettings.HitboxPosX,
+        HitboxSettings.HitboxPosY,
+        HitboxSettings.HitboxPosZ
+    )
+end
+
+local function applyHitbox()
+    if not HitboxSettings.Enabled then return end
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            if isOnSameTeam(player) then
+                -- Restore original
+                if HitboxSettings.UsePositionOffset then
+                    removeCustomHitbox(player)
+                elseif originalHitboxSizes[player] then
+                    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        hrp.Size = originalHitboxSizes[player]
+                        hrp.Transparency = 0
+                        hrp.CanCollide = true
+                    end
+                    originalHitboxSizes[player] = nil
+                end
+                continue
+            end
+            
+            local character = player.Character
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            
+            if hrp then
+                if HitboxSettings.UsePositionOffset then
+                    -- Use position offset mode (not recommended)
+                    if not customHitboxParts[player] then
+                        createCustomHitbox(player, character)
+                    else
+                        updateCustomHitbox(player, character)
+                    end
+                else
+                    -- Use normal expansion mode (recommended)
+                    if not originalHitboxSizes[player] then
+                        originalHitboxSizes[player] = hrp.Size
+                    end
+                    
+                    hrp.Size = calculateHitboxSize()
+                    hrp.Transparency = HitboxSettings.HitboxTransparency
+                    hrp.CanCollide = false
+                end
+            end
+        end
+    end
+end
+
+local function restoreHitboxes()
+    -- Restore normal hitboxes
+    for player, originalSize in pairs(originalHitboxSizes) do
+        if player.Character then
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.Size = originalSize
+                hrp.Transparency = 0
+                hrp.CanCollide = true
+            end
+        end
+    end
+    originalHitboxSizes = {}
+    
+    -- Remove custom hitboxes
+    for player, _ in pairs(customHitboxParts) do
+        removeCustomHitbox(player)
+    end
+    customHitboxParts = {}
+end
+
+-- Main loop
+local function startHitbox()
+    if hitboxConnection then return end
+    
+    createPreviewBox()
+    
+    hitboxConnection = RunService.Heartbeat:Connect(function()
+        pcall(applyHitbox)
+        pcall(updatePreviewBox)
+    end)
+end
+
+local function stopHitbox()
+    if hitboxConnection then
+        hitboxConnection:Disconnect()
+        hitboxConnection = nil
+    end
+    removePreviewBox()
+    restoreHitboxes()
+end
+
+-- Export functions
+getgenv().HitboxControl = {
+    Start = startHitbox,
+    Stop = stopHitbox
+}
+
+print("Hitbox Script Loaded!")
+return true
