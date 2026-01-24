@@ -1,11 +1,10 @@
 -- Auto Defuse Script
 -- Upload this to GitHub and use the raw link
 
-print("man")
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
 -- Get settings from global
@@ -15,126 +14,79 @@ if not AutoDefuseSettings then
     return
 end
 
-local monitoredCharacters = {}
 local highlightCheckConnection = nil
-local typeCheckConnection = nil
+local teamCheckConnection = nil
+local monstersTeamPlayers = {}
 
--- Type decal IDs to check
-local ExcludedTypes = {
-    Gravedigger = "rbxassetid://90297495789346",
-    Gladiator = "rbxassetid://7097554699",
-    Hunter = "rbxassetid://14244367874"
-}
+-- Update Monsters team players list
+local function updateMonstersTeam()
+    monstersTeamPlayers = {}
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Team and player.Team.Name == "Monsters" then
+            monstersTeamPlayers[player] = true
+        end
+    end
+end
 
--- Check if character has excluded type
-local function isExcludedType(character)
-    for typeName, decalId in pairs(ExcludedTypes) do
-        local torso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
-        if torso then
-            for _, obj in pairs(torso:GetChildren()) do
-                if obj:IsA("Decal") and obj.Texture == decalId then
-                    return true, typeName
+-- Check if character is in Monsters team (using cached list)
+local function isMonsterTeam(character)
+    local player = Players:GetPlayerFromCharacter(character)
+    if not player then return false end
+    return monstersTeamPlayers[player] == true
+end
+
+-- Check workspace for Highlights
+local function checkForHighlights()
+    if not AutoDefuseSettings.Enabled then return end
+    
+    -- Loop through all characters in workspace
+    for _, character in pairs(Workspace:GetChildren()) do
+        if character:IsA("Model") and character:FindFirstChild("Humanoid") then
+            -- Filter: Only Monsters team
+            if isMonsterTeam(character) then
+                -- Look for Highlight named "Highlight"
+                local highlight = character:FindFirstChild("Highlight")
+                if highlight and highlight:IsA("Highlight") then
+                    -- Found it! Click instantly
+                    print("Highlight found")
+                    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                    task.wait(0.05)
+                    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
                 end
             end
         end
     end
-    return false, nil
 end
 
--- Check if character is in Monster team
-local function isMonsterTeam(player)
-    if not player or not player.Team then return false end
-    return player.Team.Name == "Monster"
-end
-
--- Get distance from local player
-local function getDistance(character)
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        return math.huge
-    end
+-- Team check loop (every 5 seconds)
+local function startTeamCheck()
+    if teamCheckConnection then return end
     
-    local targetHRP = character:FindFirstChild("HumanoidRootPart")
-    if not targetHRP then return math.huge end
-    
-    return (LocalPlayer.Character.HumanoidRootPart.Position - targetHRP.Position).Magnitude
-end
-
--- Check if character should be monitored
-local function shouldMonitor(character)
-    if not character or not character.Parent then return false end
-    
-    -- Get player from character
-    local player = Players:GetPlayerFromCharacter(character)
-    if not player then return false end
-    
-    -- Check if Monster team
-    if not isMonsterTeam(player) then return false end
-    
-    -- Check distance (15 studs)
-    if getDistance(character) > 15 then return false end
-    
-    -- Check if excluded type
-    local excluded, typeName = isExcludedType(character)
-    if excluded then
-        return false
-    end
-    
-    return true
-end
-
--- Check for Highlight in character
-local function checkForHighlight(character)
-    if not AutoDefuseSettings.Enabled then return end
-    if not shouldMonitor(character) then return end
-    
-    -- Look for Highlight
-    local highlight = character:FindFirstChildOfClass("Highlight")
-    if highlight then
-        print("Defused!")
-        monitoredCharacters[character] = nil
-    end
-end
-
--- Update monitored characters
-local function updateMonitoredCharacters()
-    monitoredCharacters = {}
-    
-    for _, character in pairs(Workspace:GetChildren()) do
-        if character:IsA("Model") and character:FindFirstChild("Humanoid") then
-            if shouldMonitor(character) then
-                monitoredCharacters[character] = true
-            end
-        end
-    end
-end
-
--- Type check loop (every 2 seconds)
-local function startTypeCheck()
-    if typeCheckConnection then return end
-    
-    typeCheckConnection = task.spawn(function()
+    teamCheckConnection = task.spawn(function()
         while AutoDefuseSettings.Enabled do
-            updateMonitoredCharacters()
-            task.wait(2)
+            updateMonstersTeam()
+            task.wait(5)
         end
     end)
 end
 
--- Highlight check loop (every 0.01 seconds)
-local function startHighlightCheck()
+-- Start monitoring
+local function startMonitoring()
     if highlightCheckConnection then return end
     
+    -- Initial team check
+    updateMonstersTeam()
+    
+    -- Start team checking every 5 seconds
+    startTeamCheck()
+    
+    -- Check every 0.01 seconds (Heartbeat runs ~60 FPS)
     highlightCheckConnection = RunService.Heartbeat:Connect(function()
-        if not AutoDefuseSettings.Enabled then return end
-        
-        for character, _ in pairs(monitoredCharacters) do
-            if character and character.Parent then
-                checkForHighlight(character)
-            else
-                monitoredCharacters[character] = nil
-            end
-        end
+        pcall(checkForHighlights)
     end)
+    
+    print("Auto Defuse monitoring started")
 end
 
 local function stopMonitoring()
@@ -143,22 +95,20 @@ local function stopMonitoring()
         highlightCheckConnection = nil
     end
     
-    if typeCheckConnection then
-        task.cancel(typeCheckConnection)
-        typeCheckConnection = nil
+    if teamCheckConnection then
+        task.cancel(teamCheckConnection)
+        teamCheckConnection = nil
     end
     
-    monitoredCharacters = {}
+    monstersTeamPlayers = {}
 end
 
 -- Export control functions
 getgenv().AutoDefuseControl = {
     Start = function()
         AutoDefuseSettings.Enabled = true
-        updateMonitoredCharacters()
-        startTypeCheck()
-        startHighlightCheck()
-        print("Auto Defuse enabled - Monitoring characters")
+        startMonitoring()
+        print("Auto Defuse enabled")
     end,
     Stop = function()
         AutoDefuseSettings.Enabled = false
