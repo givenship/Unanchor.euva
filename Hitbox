@@ -38,9 +38,9 @@ local function createPreviewBox()
     previewBox.Color = Color3.fromRGB(255, 0, 0)
     previewBox.Transparency = HitboxSettings.PreviewTransparency
     previewBox.Size = Vector3.new(
-        HitboxSettings.HitboxX,
-        HitboxSettings.HitboxY,
-        HitboxSettings.HitboxZ
+        HitboxSettings.HitboxLeft + HitboxSettings.HitboxRight,
+        HitboxSettings.HitboxUp + HitboxSettings.HitboxDown,
+        HitboxSettings.HitboxFront + HitboxSettings.HitboxBack
     )
     
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -63,9 +63,9 @@ local function updatePreviewBox()
     if not previewBox then return end
     
     previewBox.Size = Vector3.new(
-        HitboxSettings.HitboxX,
-        HitboxSettings.HitboxY,
-        HitboxSettings.HitboxZ
+        HitboxSettings.HitboxLeft + HitboxSettings.HitboxRight,
+        HitboxSettings.HitboxUp + HitboxSettings.HitboxDown,
+        HitboxSettings.HitboxFront + HitboxSettings.HitboxBack
     )
     previewBox.Transparency = HitboxSettings.PreviewTransparency
     
@@ -103,9 +103,9 @@ local function createCustomHitbox(player, character)
     local customHitbox = Instance.new("Part")
     customHitbox.Name = "CustomHitbox"
     customHitbox.Size = Vector3.new(
-        HitboxSettings.HitboxX,
-        HitboxSettings.HitboxY,
-        HitboxSettings.HitboxZ
+        HitboxSettings.HitboxLeft + HitboxSettings.HitboxRight,
+        HitboxSettings.HitboxUp + HitboxSettings.HitboxDown,
+        HitboxSettings.HitboxFront + HitboxSettings.HitboxBack
     )
     customHitbox.Transparency = HitboxSettings.HitboxTransparency
     customHitbox.CanCollide = false
@@ -173,9 +173,9 @@ local function updateCustomHitbox(player, character)
     local attachment = customHitboxParts[player].attachment
     
     customHitbox.Size = Vector3.new(
-        HitboxSettings.HitboxX,
-        HitboxSettings.HitboxY,
-        HitboxSettings.HitboxZ
+        HitboxSettings.HitboxLeft + HitboxSettings.HitboxRight,
+        HitboxSettings.HitboxUp + HitboxSettings.HitboxDown,
+        HitboxSettings.HitboxFront + HitboxSettings.HitboxBack
     )
     customHitbox.Transparency = HitboxSettings.HitboxTransparency
     
@@ -225,9 +225,9 @@ local function applyHitbox()
                     end
                     
                     hrp.Size = Vector3.new(
-                        HitboxSettings.HitboxX,
-                        HitboxSettings.HitboxY,
-                        HitboxSettings.HitboxZ
+                        HitboxSettings.HitboxLeft + HitboxSettings.HitboxRight,
+                        HitboxSettings.HitboxUp + HitboxSettings.HitboxDown,
+                        HitboxSettings.HitboxFront + HitboxSettings.HitboxBack
                     )
                     hrp.Transparency = HitboxSettings.HitboxTransparency
                     hrp.CanCollide = false
