@@ -1,8 +1,6 @@
 -- Hitbox Script
 -- Upload this to GitHub and use the raw link
 
-print("hello")
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
