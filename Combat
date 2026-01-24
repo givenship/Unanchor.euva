@@ -11,6 +11,7 @@ local CombatModule = {}
 -- GitHub URLs
 local HITBOX_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Hitbox"
 local AIMLOCK_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Aimlock"
+local AUTODEFUSE_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Auto.defuse"
 
 -- Settings for Hitbox
 getgenv().HitboxSettings = {
@@ -41,8 +42,14 @@ getgenv().AimlockSettings = {
     VisibilityCheck = false
 }
 
+-- Settings for Auto Defuse
+getgenv().AutoDefuseSettings = {
+    Enabled = false
+}
+
 local hitboxLoaded = false
 local aimlockLoaded = false
+local autoDefuseLoaded = false
 
 local function loadScript(url)
     print("Attempting to load from: " .. url)
@@ -546,6 +553,47 @@ function CombatModule.CreateUI(parent)
     yPos = createCheckbox("Visibility Check", getgenv().AimlockSettings, "VisibilityCheck", yPos)
     yPos = createCheckbox("Team Check", getgenv().AimlockSettings, "TeamCheck", yPos)
     
+    yPos = yPos + 10
+    
+    -- Auto Defuse Section
+    local autoDefuseTitle = Instance.new("TextLabel")
+    autoDefuseTitle.Size = UDim2.new(1, -20, 0, 30)
+    autoDefuseTitle.Position = UDim2.new(0, 10, 0, yPos)
+    autoDefuseTitle.BackgroundTransparency = 1
+    autoDefuseTitle.Text = "AUTO DEFUSE"
+    autoDefuseTitle.Font = Enum.Font.GothamBlack
+    autoDefuseTitle.TextSize = 16
+    autoDefuseTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    autoDefuseTitle.TextXAlignment = Enum.TextXAlignment.Left
+    autoDefuseTitle.Parent = combatContent
+    yPos = yPos + 40
+    
+    yPos = createToggleButton("Auto Defuse", getgenv().AutoDefuseSettings, "Enabled", yPos, function(enabled)
+        if not autoDefuseLoaded then
+            print("Loading Auto Defuse script from GitHub...")
+            autoDefuseLoaded = loadScript(AUTODEFUSE_URL)
+            if not autoDefuseLoaded then
+                warn("Failed to load Auto Defuse script from GitHub")
+                warn("URL: " .. AUTODEFUSE_URL)
+                getgenv().AutoDefuseSettings.Enabled = false
+                return
+            end
+            print("Auto Defuse script loaded successfully!")
+        end
+        
+        if not getgenv().AutoDefuseControl then
+            warn("AutoDefuseControl not found after loading")
+            getgenv().AutoDefuseSettings.Enabled = false
+            return
+        end
+        
+        if enabled then
+            getgenv().AutoDefuseControl.Start()
+        else
+            getgenv().AutoDefuseControl.Stop()
+        end
+    end)
+    
     combatContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
 
@@ -555,6 +603,9 @@ function CombatModule.Cleanup()
     end
     if aimlockLoaded and getgenv().AimlockControl then
         getgenv().AimlockControl.Stop()
+    end
+    if autoDefuseLoaded and getgenv().AutoDefuseControl then
+        getgenv().AutoDefuseControl.Stop()
     end
 end
 
