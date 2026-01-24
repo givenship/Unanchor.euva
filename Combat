@@ -11,7 +11,7 @@ local CombatModule = {}
 -- GitHub URLs
 local HITBOX_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Hitbox"
 local AIMLOCK_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Aimlock"
-local AUTODEFUSE_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Auto.defuse"
+local AUTODEFUSE_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/AutoDefuse"
 
 -- Settings for Hitbox
 getgenv().HitboxSettings = {
@@ -45,7 +45,7 @@ getgenv().AimlockSettings = {
 -- Settings for Auto Defuse
 getgenv().AutoDefuseSettings = {
     Enabled = false,
-    Delay = 3, -- Delay in seconds before clicking
+    Delay = 3000, -- Delay in milliseconds before clicking
     ShowCircle = true, -- Show detection circles
     DetectionRadius = 30 -- Detection radius in studs
 }
@@ -664,7 +664,7 @@ function CombatModule.CreateUI(parent)
         return position + 60
     end
     
-    yPos = createSlider("Delay (seconds)", getgenv().AutoDefuseSettings, "Delay", 0, 10, yPos)
+    yPos = createSlider("Delay (ms)", getgenv().AutoDefuseSettings, "Delay", 0, 5000, yPos)
     yPos = createSlider("Detection Radius", getgenv().AutoDefuseSettings, "DetectionRadius", 10, 100, yPos)
     yPos = createCheckbox("Show Circle", getgenv().AutoDefuseSettings, "ShowCircle", yPos)
     
