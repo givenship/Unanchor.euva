@@ -11,7 +11,7 @@ local CombatModule = {}
 -- GitHub URLs
 local HITBOX_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Hitbox"
 local AIMLOCK_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Aimlock"
-local AUTODEFUSE_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Auto.defuse"
+local AUTODEFUSE_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Auto.Defuse"
 
 -- Settings for Hitbox
 getgenv().HitboxSettings = {
@@ -44,7 +44,10 @@ getgenv().AimlockSettings = {
 
 -- Settings for Auto Defuse
 getgenv().AutoDefuseSettings = {
-    Enabled = false
+    Enabled = false,
+    Delay = 3, -- Delay in seconds before clicking
+    ShowCircle = true, -- Show detection circles
+    DetectionRadius = 30 -- Detection radius in studs
 }
 
 local hitboxLoaded = false
@@ -593,6 +596,77 @@ function CombatModule.CreateUI(parent)
             getgenv().AutoDefuseControl.Stop()
         end
     end)
+    
+    -- Delay slider (for testing)
+    local function createDelaySlider(name, settingsTable, settingKey, minVal, maxVal, position)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, -20, 0, 50)
+        container.Position = UDim2.new(0, 10, 0, position)
+        container.BackgroundTransparency = 1
+        container.Parent = combatContent
+        
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0, 100, 0, 20)
+        label.Position = UDim2.new(0, 0, 0, 5)
+        label.BackgroundTransparency = 1
+        label.Text = name .. ": " .. settingsTable[settingKey]
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 12
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = container
+        
+        local sliderBg = Instance.new("Frame")
+        sliderBg.Size = UDim2.new(1, -110, 0, 20)
+        sliderBg.Position = UDim2.new(0, 105, 0, 25)
+        sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        sliderBg.BorderSizePixel = 1
+        sliderBg.BorderColor3 = Color3.fromRGB(255, 255, 255)
+        sliderBg.Parent = container
+        
+        local sliderFill = Instance.new("Frame")
+        sliderFill.Size = UDim2.new((settingsTable[settingKey] - minVal) / (maxVal - minVal), 0, 1, 0)
+        sliderFill.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
+        sliderFill.BorderSizePixel = 0
+        sliderFill.Parent = sliderBg
+        
+        local sliderButton = Instance.new("TextButton")
+        sliderButton.Size = UDim2.new(1, 0, 1, 0)
+        sliderButton.BackgroundTransparency = 1
+        sliderButton.Text = ""
+        sliderButton.Parent = sliderBg
+        
+        local dragging = false
+        
+        sliderButton.MouseButton1Down:Connect(function()
+            dragging = true
+        end)
+        
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
+        
+        RunService.RenderStepped:Connect(function()
+            if dragging then
+                local mouse = UserInputService:GetMouseLocation()
+                local relativeX = math.clamp(mouse.X - sliderBg.AbsolutePosition.X, 0, sliderBg.AbsoluteSize.X)
+                local percentage = relativeX / sliderBg.AbsoluteSize.X
+                local value = math.floor(minVal + (maxVal - minVal) * percentage)
+                
+                settingsTable[settingKey] = value
+                sliderFill.Size = UDim2.new((value - minVal) / (maxVal - minVal), 0, 1, 0)
+                label.Text = name .. ": " .. value
+            end
+        end)
+        
+        return position + 60
+    end
+    
+    yPos = createSlider("Delay (seconds)", getgenv().AutoDefuseSettings, "Delay", 0, 10, yPos)
+    yPos = createSlider("Detection Radius", getgenv().AutoDefuseSettings, "DetectionRadius", 10, 100, yPos)
+    yPos = createCheckbox("Show Circle", getgenv().AutoDefuseSettings, "ShowCircle", yPos)
     
     combatContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
