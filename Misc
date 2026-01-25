@@ -11,17 +11,17 @@ local MiscModule = {}
 
 -- Settings
 getgenv().MiscSettings = {
-    PartControllerEnabled = false,
-    ControlDistance = 10, -- Distance from camera
-    MoveSpeed = 0.5,
-    RotateSpeed = 5
+    PartControllerEnabled = false
 }
 
 -- Part controller variables
 local selectedPart = nil
-local controlConnection = nil
+local isDragging = false
+local dragStartMousePos = nil
+local dragStartPartPos = nil
+local dragPlane = nil
 local selectionBox = nil
-local isRotating = false
+local dragConnection = nil
 
 -- Create selection box
 local function createSelectionBox(part)
@@ -54,98 +54,57 @@ local function getMouseTarget()
     return nil
 end
 
--- Control part position and rotation
-local function controlPart()
-    if not selectedPart or not selectedPart.Parent then
-        selectedPart = nil
-        if selectionBox then
-            selectionBox:Destroy()
-            selectionBox = nil
-        end
+-- Get mouse position in 3D space on a plane
+local function getMousePosition3D(planeNormal, planePosition)
+    local camera = Workspace.CurrentCamera
+    local mouse = LocalPlayer:GetMouse()
+    
+    -- Cast ray from camera through mouse position
+    local unitRay = camera:ScreenPointToRay(mouse.X, mouse.Y)
+    local rayOrigin = unitRay.Origin
+    local rayDirection = unitRay.Direction
+    
+    -- Calculate intersection with plane
+    local denominator = rayDirection:Dot(planeNormal)
+    
+    if math.abs(denominator) > 0.0001 then
+        local t = (planePosition - rayOrigin):Dot(planeNormal) / denominator
+        return rayOrigin + rayDirection * t
+    end
+    
+    return nil
+end
+
+-- Drag part
+local function dragPart()
+    if not selectedPart or not selectedPart.Parent or not isDragging then
         return
     end
     
-    local camera = Workspace.CurrentCamera
-    local distance = getgenv().MiscSettings.ControlDistance or 10
+    -- Get current mouse position on drag plane
+    local mousePos3D = getMousePosition3D(dragPlane.normal, dragPlane.position)
     
-    -- Calculate position in front of camera
-    local targetPosition = camera.CFrame.Position + (camera.CFrame.LookVector * distance)
-    
-    -- Movement input
-    local moveDirection = Vector3.new(0, 0, 0)
-    
-    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-        moveDirection = moveDirection + camera.CFrame.LookVector
-    end
-    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-        moveDirection = moveDirection - camera.CFrame.LookVector
-    end
-    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-        moveDirection = moveDirection - camera.CFrame.RightVector
-    end
-    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-        moveDirection = moveDirection + camera.CFrame.RightVector
-    end
-    if UserInputService:IsKeyDown(Enum.KeyCode.E) then
-        moveDirection = moveDirection + Vector3.new(0, 1, 0)
-    end
-    if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
-        moveDirection = moveDirection - Vector3.new(0, 1, 0)
-    end
-    
-    -- Apply movement
-    if moveDirection.Magnitude > 0 then
-        local moveSpeed = getgenv().MiscSettings.MoveSpeed or 0.5
-        targetPosition = targetPosition + (moveDirection.Unit * moveSpeed)
-    end
-    
-    -- Rotation input (R to toggle rotation mode)
-    if isRotating then
-        local rotateSpeed = getgenv().MiscSettings.RotateSpeed or 5
-        local rotation = selectedPart.CFrame - selectedPart.CFrame.Position
+    if mousePos3D then
+        -- Calculate offset from drag start
+        local offset = mousePos3D - dragStartMousePos
         
-        if UserInputService:IsKeyDown(Enum.KeyCode.Up) then
-            rotation = rotation * CFrame.Angles(math.rad(rotateSpeed), 0, 0)
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Down) then
-            rotation = rotation * CFrame.Angles(math.rad(-rotateSpeed), 0, 0)
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Left) then
-            rotation = rotation * CFrame.Angles(0, math.rad(rotateSpeed), 0)
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Right) then
-            rotation = rotation * CFrame.Angles(0, math.rad(-rotateSpeed), 0)
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.PageUp) then
-            rotation = rotation * CFrame.Angles(0, 0, math.rad(rotateSpeed))
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.PageDown) then
-            rotation = rotation * CFrame.Angles(0, 0, math.rad(-rotateSpeed))
-        end
+        -- Apply movement to part
+        local newPosition = dragStartPartPos + offset
+        selectedPart.CFrame = CFrame.new(newPosition) * (selectedPart.CFrame - selectedPart.CFrame.Position)
         
-        selectedPart.CFrame = CFrame.new(targetPosition) * rotation
-    else
-        -- Just move, keep original rotation
-        selectedPart.CFrame = CFrame.new(targetPosition) * (selectedPart.CFrame - selectedPart.CFrame.Position)
+        -- Reset velocity
+        selectedPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        selectedPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
     end
-    
-    -- Reset velocity to prevent physics interference
-    selectedPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-    selectedPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
 end
 
 -- Start part controller
 local function startPartController()
-    if controlConnection then return end
+    if dragConnection then return end
     
-    print("Part Controller enabled")
-    print("Left Click - Select part")
-    print("WASD/Q/E - Move part")
-    print("R - Toggle rotation mode")
-    print("Arrow Keys - Rotate (when R is active)")
-    print("Delete - Release part")
+    print("Part Controller enabled - Click and drag unanchored parts to move them")
     
-    -- Click to select part
+    -- Mouse button down - start drag
     local mouse = LocalPlayer:GetMouse()
     mouse.Button1Down:Connect(function()
         if not getgenv().MiscSettings.PartControllerEnabled then return end
@@ -154,25 +113,40 @@ local function startPartController()
         if target then
             selectedPart = target
             createSelectionBox(selectedPart)
-            print("Selected:", selectedPart.Name)
+            isDragging = true
+            
+            -- Calculate drag plane (perpendicular to camera)
+            local camera = Workspace.CurrentCamera
+            dragPlane = {
+                normal = camera.CFrame.LookVector,
+                position = selectedPart.Position
+            }
+            
+            -- Store start positions
+            dragStartMousePos = getMousePosition3D(dragPlane.normal, dragPlane.position)
+            dragStartPartPos = selectedPart.Position
+            
+            print("Dragging:", selectedPart.Name)
         end
     end)
     
-    -- R to toggle rotation mode
+    -- Mouse button up - stop drag
+    mouse.Button1Up:Connect(function()
+        if isDragging then
+            isDragging = false
+            print("Released:", selectedPart and selectedPart.Name or "part")
+        end
+    end)
+    
+    -- Escape to deselect
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if not getgenv().MiscSettings.PartControllerEnabled then return end
         
-        if input.KeyCode == Enum.KeyCode.R and selectedPart then
-            isRotating = not isRotating
-            if selectionBox then
-                selectionBox.Color3 = isRotating and Color3.fromRGB(255, 170, 0) or Color3.fromRGB(0, 170, 255)
-            end
-            print(isRotating and "Rotation mode ON" or "Rotation mode OFF")
-        elseif input.KeyCode == Enum.KeyCode.Delete and selectedPart then
-            print("Released:", selectedPart.Name)
+        if input.KeyCode == Enum.KeyCode.Escape and selectedPart then
+            print("Deselected:", selectedPart.Name)
             selectedPart = nil
-            isRotating = false
+            isDragging = false
             if selectionBox then
                 selectionBox:Destroy()
                 selectionBox = nil
@@ -180,18 +154,18 @@ local function startPartController()
         end
     end)
     
-    -- Control loop
-    controlConnection = RunService.RenderStepped:Connect(function()
-        if getgenv().MiscSettings.PartControllerEnabled and selectedPart then
-            pcall(controlPart)
+    -- Drag loop
+    dragConnection = RunService.RenderStepped:Connect(function()
+        if getgenv().MiscSettings.PartControllerEnabled and isDragging then
+            pcall(dragPart)
         end
     end)
 end
 
 local function stopPartController()
-    if controlConnection then
-        controlConnection:Disconnect()
-        controlConnection = nil
+    if dragConnection then
+        dragConnection:Disconnect()
+        dragConnection = nil
     end
     
     if selectionBox then
@@ -200,7 +174,7 @@ local function stopPartController()
     end
     
     selectedPart = nil
-    isRotating = false
+    isDragging = false
     print("Part Controller disabled")
 end
 
@@ -332,16 +306,12 @@ function MiscModule.CreateUI(parent)
         end
     end)
     
-    yPos = createSlider("Control Distance", getgenv().MiscSettings, "ControlDistance", 1, 50, yPos)
-    yPos = createSlider("Move Speed", getgenv().MiscSettings, "MoveSpeed", 0.1, 5, yPos)
-    yPos = createSlider("Rotate Speed", getgenv().MiscSettings, "RotateSpeed", 1, 20, yPos)
-    
     -- Controls info
     local controlsTitle = Instance.new("TextLabel")
     controlsTitle.Size = UDim2.new(1, -20, 0, 25)
     controlsTitle.Position = UDim2.new(0, 10, 0, yPos)
     controlsTitle.BackgroundTransparency = 1
-    controlsTitle.Text = "CONTROLS:"
+    controlsTitle.Text = "HOW TO USE:"
     controlsTitle.Font = Enum.Font.GothamBold
     controlsTitle.TextSize = 12
     controlsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -350,17 +320,16 @@ function MiscModule.CreateUI(parent)
     yPos = yPos + 30
     
     local controlsInfo = Instance.new("TextLabel")
-    controlsInfo.Size = UDim2.new(1, -20, 0, 140)
+    controlsInfo.Size = UDim2.new(1, -20, 0, 100)
     controlsInfo.Position = UDim2.new(0, 10, 0, yPos)
     controlsInfo.BackgroundTransparency = 1
-    controlsInfo.Text = [[Left Click - Select unanchored part
-WASD - Move horizontally
-Q - Move down
-E - Move up
-R - Toggle rotation mode
-Arrow Keys - Rotate (when R active)
-PageUp/PageDown - Roll (when R active)
-Delete - Release part]]
+    controlsInfo.Text = [[1. Click on any unanchored part
+2. Hold and drag to move the part
+3. Part follows your mouse on a plane
+4. Release mouse to stop dragging
+5. Press Escape to deselect part
+
+Works exactly like Roblox Studio's Move tool!]]
     controlsInfo.Font = Enum.Font.Gotham
     controlsInfo.TextSize = 11
     controlsInfo.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -368,7 +337,7 @@ Delete - Release part]]
     controlsInfo.TextYAlignment = Enum.TextYAlignment.Top
     controlsInfo.TextWrapped = true
     controlsInfo.Parent = miscContent
-    yPos = yPos + 150
+    yPos = yPos + 110
     
     miscContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
