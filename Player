@@ -135,7 +135,9 @@ local function toggleNoclip()
     end
 end
 
--- Invisible (Carpet method with locked Y position)
+-- Invisible (Carpet method with input-based movement)
+local invisiblePosition = nil
+
 local function toggleInvisible()
     -- Clean up existing invisible
     if carpetLoop then
@@ -177,12 +179,12 @@ local function toggleInvisible()
         carpet = humanoid:LoadAnimation(carpetAnim)
         carpet:Play(.1, 1, 1)
         
-        -- Get initial Y position with offset
+        -- Get initial position with Y offset
         local root = getRoot(LocalPlayer.Character)
         if not root then return end
         
         local yOffset = getgenv().PlayerSettings.InvisibleYOffset or -2
-        local lockedY = root.Position.Y + yOffset
+        invisiblePosition = root.Position + Vector3.new(0, yOffset, 0)
         
         -- Handle death
         carpetDied = humanoid.Died:Connect(function()
@@ -190,22 +192,60 @@ local function toggleInvisible()
             if carpet then carpet:Stop() end
             if carpetAnim then carpetAnim:Destroy() end
             if carpetDied then carpetDied:Disconnect() end
+            invisiblePosition = nil
         end)
         
-        -- Lock Y position
-        carpetLoop = RunService.Heartbeat:Connect(function()
+        -- Movement speed
+        local moveSpeed = 0.5
+        
+        -- Lock position and handle input
+        carpetLoop = RunService.RenderStepped:Connect(function()
             pcall(function()
                 local root = getRoot(LocalPlayer.Character)
-                if root then
-                    -- Lock Y position, allow X and Z movement
-                    local currentPos = root.Position
-                    root.CFrame = CFrame.new(currentPos.X, lockedY, currentPos.Z)
+                if not root then return end
+                
+                -- Get camera direction
+                local camera = workspace.CurrentCamera
+                local cameraCFrame = camera.CFrame
+                
+                -- Calculate movement direction based on input
+                local moveDirection = Vector3.new(0, 0, 0)
+                
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                    moveDirection = moveDirection + (cameraCFrame.LookVector * Vector3.new(1, 0, 1)).Unit
                 end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                    moveDirection = moveDirection - (cameraCFrame.LookVector * Vector3.new(1, 0, 1)).Unit
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                    moveDirection = moveDirection - cameraCFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                    moveDirection = moveDirection + cameraCFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    moveDirection = moveDirection + Vector3.new(0, 1, 0)
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                    moveDirection = moveDirection - Vector3.new(0, 1, 0)
+                end
+                
+                -- Normalize and apply speed
+                if moveDirection.Magnitude > 0 then
+                    moveDirection = moveDirection.Unit * moveSpeed
+                    invisiblePosition = invisiblePosition + moveDirection
+                end
+                
+                -- Lock character to invisible position
+                root.CFrame = CFrame.new(invisiblePosition)
+                root.Velocity = Vector3.new(0, 0, 0)
+                root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
             end)
         end)
         
-        print("Invisible enabled - Y position locked at:", lockedY)
+        print("Invisible enabled - Position locked, use WASD/Space/Shift to move")
     else
+        invisiblePosition = nil
         print("Invisible disabled")
     end
 end
@@ -384,16 +424,17 @@ function PlayerModule.CreateUI(parent)
     yPos = createSlider("Y Offset", getgenv().PlayerSettings, "InvisibleYOffset", -10, 10, yPos)
     
     local invisNote = Instance.new("TextLabel")
-    invisNote.Size = UDim2.new(1, -20, 0, 30)
+    invisNote.Size = UDim2.new(1, -20, 0, 40)
     invisNote.Position = UDim2.new(0, 10, 0, yPos)
     invisNote.BackgroundTransparency = 1
-    invisNote.Text = "Note: Works best with R6"
+    invisNote.Text = "Controls: WASD = Move | Space = Up | Shift = Down"
     invisNote.Font = Enum.Font.Gotham
     invisNote.TextSize = 10
     invisNote.TextColor3 = Color3.fromRGB(200, 200, 200)
     invisNote.TextXAlignment = Enum.TextXAlignment.Left
+    invisNote.TextWrapped = true
     invisNote.Parent = playerContent
-    yPos = yPos + 35
+    yPos = yPos + 45
     
     playerContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
