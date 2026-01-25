@@ -17,18 +17,24 @@ getgenv().MiscSettings = {
 -- Part controller variables
 local selectedPart = nil
 local isDragging = false
+local dragAxis = nil -- "X", "Y", "Z", or nil for free drag
 local dragStartMousePos = nil
 local dragStartPartPos = nil
-local dragPlane = nil
 local selectionBox = nil
+local dragHandles = nil
 local dragConnection = nil
 
--- Create selection box
-local function createSelectionBox(part)
+-- Create selection box and drag handles
+local function createSelectionVisuals(part)
+    -- Remove old visuals
     if selectionBox then
         selectionBox:Destroy()
     end
+    if dragHandles then
+        dragHandles:Destroy()
+    end
     
+    -- Create selection box
     selectionBox = Instance.new("SelectionBox")
     selectionBox.Color3 = Color3.fromRGB(0, 170, 255)
     selectionBox.LineThickness = 0.05
@@ -36,7 +42,15 @@ local function createSelectionBox(part)
     selectionBox.Adornee = part
     selectionBox.Parent = part
     
-    return selectionBox
+    -- Create drag handles (arrows)
+    dragHandles = Instance.new("Handles")
+    dragHandles.Adornee = part
+    dragHandles.Color3 = Color3.fromRGB(255, 255, 255)
+    dragHandles.Style = Enum.HandlesStyle.Movement
+    dragHandles.Visible = true
+    dragHandles.Parent = part
+    
+    return selectionBox, dragHandles
 end
 
 -- Get mouse target (unanchored parts only)
@@ -54,107 +68,190 @@ local function getMouseTarget()
     return nil
 end
 
--- Get mouse position in 3D space on a plane
-local function getMousePosition3D(planeNormal, planePosition)
+-- Get mouse ray
+local function getMouseRay()
     local camera = Workspace.CurrentCamera
     local mouse = LocalPlayer:GetMouse()
-    
-    -- Cast ray from camera through mouse position
-    local unitRay = camera:ScreenPointToRay(mouse.X, mouse.Y)
-    local rayOrigin = unitRay.Origin
-    local rayDirection = unitRay.Direction
-    
-    -- Calculate intersection with plane
-    local denominator = rayDirection:Dot(planeNormal)
-    
-    if math.abs(denominator) > 0.0001 then
-        local t = (planePosition - rayOrigin):Dot(planeNormal) / denominator
-        return rayOrigin + rayDirection * t
-    end
-    
-    return nil
+    return camera:ScreenPointToRay(mouse.X, mouse.Y)
 end
 
--- Drag part
+-- Project point onto axis
+local function projectOntoAxis(point, origin, axis)
+    local offset = point - origin
+    local projection = offset:Dot(axis)
+    return origin + (axis * projection)
+end
+
+-- Drag part smoothly
 local function dragPart()
     if not selectedPart or not selectedPart.Parent or not isDragging then
         return
     end
     
-    -- Get current mouse position on drag plane
-    local mousePos3D = getMousePosition3D(dragPlane.normal, dragPlane.position)
+    local ray = getMouseRay()
+    local camera = Workspace.CurrentCamera
     
-    if mousePos3D then
-        -- Calculate offset from drag start
-        local offset = mousePos3D - dragStartMousePos
+    if dragAxis then
+        -- Dragging on a specific axis
+        local axis = Vector3.new(0, 0, 0)
+        if dragAxis == "X" then
+            axis = Vector3.new(1, 0, 0)
+        elseif dragAxis == "Y" then
+            axis = Vector3.new(0, 1, 0)
+        elseif dragAxis == "Z" then
+            axis = Vector3.new(0, 0, 1)
+        end
         
-        -- Apply movement to part
-        local newPosition = dragStartPartPos + offset
-        selectedPart.CFrame = CFrame.new(newPosition) * (selectedPart.CFrame - selectedPart.CFrame.Position)
+        -- Find closest point on axis to mouse ray
+        local partPos = selectedPart.Position
+        local axisLine = partPos + axis
         
-        -- Reset velocity
-        selectedPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        selectedPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        -- Calculate intersection
+        local cameraCFrame = camera.CFrame
+        local mouseDir = ray.Direction
+        
+        -- Project mouse ray onto the axis
+        local t = ((dragStartPartPos - cameraCFrame.Position):Dot(axis)) / (mouseDir:Dot(axis))
+        local mousePoint = cameraCFrame.Position + (mouseDir * t)
+        
+        -- Project onto axis
+        local targetPos = projectOntoAxis(mousePoint, dragStartPartPos, axis)
+        
+        -- Smooth movement
+        local currentPos = selectedPart.Position
+        local newPos = currentPos:Lerp(targetPos, 0.5)
+        
+        selectedPart.CFrame = CFrame.new(newPos) * (selectedPart.CFrame - selectedPart.CFrame.Position)
+    else
+        -- Free drag on plane perpendicular to camera
+        local planeNormal = camera.CFrame.LookVector
+        local planePosition = selectedPart.Position
+        
+        -- Ray-plane intersection
+        local denominator = ray.Direction:Dot(planeNormal)
+        
+        if math.abs(denominator) > 0.0001 then
+            local t = (planePosition - ray.Origin):Dot(planeNormal) / denominator
+            local mousePos3D = ray.Origin + ray.Direction * t
+            
+            -- Calculate offset
+            local offset = mousePos3D - dragStartMousePos
+            local targetPos = dragStartPartPos + offset
+            
+            -- Smooth movement
+            local currentPos = selectedPart.Position
+            local newPos = currentPos:Lerp(targetPos, 0.5)
+            
+            selectedPart.CFrame = CFrame.new(newPos) * (selectedPart.CFrame - selectedPart.CFrame.Position)
+        end
     end
+    
+    -- Reset velocity for smooth control
+    selectedPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    selectedPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
 end
 
 -- Start part controller
 local function startPartController()
     if dragConnection then return end
     
-    print("Part Controller enabled - Click and drag unanchored parts to move them")
+    print("Part Controller enabled")
+    print("Click part to select | Drag arrows to move on axis | T to anchor/unanchor")
     
-    -- Mouse button down - start drag
+    -- Mouse click - select part
     local mouse = LocalPlayer:GetMouse()
     mouse.Button1Down:Connect(function()
         if not getgenv().MiscSettings.PartControllerEnabled then return end
+        if isDragging then return end -- Don't select while dragging
         
         local target = getMouseTarget()
         if target then
             selectedPart = target
-            createSelectionBox(selectedPart)
-            isDragging = true
+            createSelectionVisuals(selectedPart)
+            print("Selected:", selectedPart.Name)
             
-            -- Calculate drag plane (perpendicular to camera)
-            local camera = Workspace.CurrentCamera
-            dragPlane = {
-                normal = camera.CFrame.LookVector,
-                position = selectedPart.Position
-            }
-            
-            -- Store start positions
-            dragStartMousePos = getMousePosition3D(dragPlane.normal, dragPlane.position)
-            dragStartPartPos = selectedPart.Position
-            
-            print("Dragging:", selectedPart.Name)
-        end
-    end)
-    
-    -- Mouse button up - stop drag
-    mouse.Button1Up:Connect(function()
-        if isDragging then
-            isDragging = false
-            print("Released:", selectedPart and selectedPart.Name or "part")
-        end
-    end)
-    
-    -- Escape to deselect
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if not getgenv().MiscSettings.PartControllerEnabled then return end
-        
-        if input.KeyCode == Enum.KeyCode.Escape and selectedPart then
-            print("Deselected:", selectedPart.Name)
-            selectedPart = nil
-            isDragging = false
-            if selectionBox then
-                selectionBox:Destroy()
-                selectionBox = nil
+            -- Connect handle events
+            if dragHandles then
+                dragHandles.MouseButton1Down:Connect(function(face)
+                    isDragging = true
+                    
+                    -- Determine axis from face
+                    if face == Enum.NormalId.Right or face == Enum.NormalId.Left then
+                        dragAxis = "X"
+                    elseif face == Enum.NormalId.Top or face == Enum.NormalId.Bottom then
+                        dragAxis = "Y"
+                    elseif face == Enum.NormalId.Front or face == Enum.NormalId.Back then
+                        dragAxis = "Z"
+                    end
+                    
+                    dragStartPartPos = selectedPart.Position
+                    
+                    local ray = getMouseRay()
+                    local camera = Workspace.CurrentCamera
+                    local planeNormal = camera.CFrame.LookVector
+                    local planePosition = selectedPart.Position
+                    local denominator = ray.Direction:Dot(planeNormal)
+                    
+                    if math.abs(denominator) > 0.0001 then
+                        local t = (planePosition - ray.Origin):Dot(planeNormal) / denominator
+                        dragStartMousePos = ray.Origin + ray.Direction * t
+                    end
+                    
+                    print("Dragging on axis:", dragAxis)
+                end)
+                
+                dragHandles.MouseButton1Up:Connect(function()
+                    if isDragging then
+                        isDragging = false
+                        dragAxis = nil
+                        print("Drag released")
+                    end
+                end)
             end
         end
     end)
     
-    -- Drag loop
+    -- T key - Toggle anchor
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if not getgenv().MiscSettings.PartControllerEnabled then return end
+        
+        if input.KeyCode == Enum.KeyCode.T and selectedPart then
+            selectedPart.Anchored = not selectedPart.Anchored
+            print(selectedPart.Name, selectedPart.Anchored and "ANCHORED" or "UNANCHORED")
+            
+            -- Update visual color
+            if selectionBox then
+                selectionBox.Color3 = selectedPart.Anchored and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 170, 255)
+            end
+            
+            -- Remove selection if now anchored
+            if selectedPart.Anchored then
+                if dragHandles then
+                    dragHandles:Destroy()
+                    dragHandles = nil
+                end
+            else
+                -- Recreate handles if unanchored
+                createSelectionVisuals(selectedPart)
+            end
+        elseif input.KeyCode == Enum.KeyCode.Escape and selectedPart then
+            print("Deselected:", selectedPart.Name)
+            selectedPart = nil
+            isDragging = false
+            dragAxis = nil
+            if selectionBox then
+                selectionBox:Destroy()
+                selectionBox = nil
+            end
+            if dragHandles then
+                dragHandles:Destroy()
+                dragHandles = nil
+            end
+        end
+    end)
+    
+    -- Drag loop (smooth real-time movement)
     dragConnection = RunService.RenderStepped:Connect(function()
         if getgenv().MiscSettings.PartControllerEnabled and isDragging then
             pcall(dragPart)
@@ -173,8 +270,14 @@ local function stopPartController()
         selectionBox = nil
     end
     
+    if dragHandles then
+        dragHandles:Destroy()
+        dragHandles = nil
+    end
+    
     selectedPart = nil
     isDragging = false
+    dragAxis = nil
     print("Part Controller disabled")
 end
 
@@ -209,80 +312,6 @@ function MiscModule.CreateUI(parent)
         end)
         
         return position + 45
-    end
-    
-    -- Helper function to create slider
-    local function createSlider(name, settingsTable, settingKey, minVal, maxVal, position)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -20, 0, 50)
-        container.Position = UDim2.new(0, 10, 0, position)
-        container.BackgroundTransparency = 1
-        container.Parent = miscContent
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0, 120, 0, 20)
-        label.Position = UDim2.new(0, 0, 0, 5)
-        label.BackgroundTransparency = 1
-        label.Text = name .. ": " .. settingsTable[settingKey]
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 12
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = container
-        
-        local sliderBg = Instance.new("Frame")
-        sliderBg.Size = UDim2.new(1, -130, 0, 20)
-        sliderBg.Position = UDim2.new(0, 125, 0, 25)
-        sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        sliderBg.BorderSizePixel = 1
-        sliderBg.BorderColor3 = Color3.fromRGB(255, 255, 255)
-        sliderBg.Parent = container
-        
-        local sliderFill = Instance.new("Frame")
-        sliderFill.Size = UDim2.new((settingsTable[settingKey] - minVal) / (maxVal - minVal), 0, 1, 0)
-        sliderFill.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
-        sliderFill.BorderSizePixel = 0
-        sliderFill.Parent = sliderBg
-        
-        local sliderButton = Instance.new("TextButton")
-        sliderButton.Size = UDim2.new(1, 0, 1, 0)
-        sliderButton.BackgroundTransparency = 1
-        sliderButton.Text = ""
-        sliderButton.Parent = sliderBg
-        
-        local dragging = false
-        
-        sliderButton.MouseButton1Down:Connect(function()
-            dragging = true
-        end)
-        
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = false
-            end
-        end)
-        
-        RunService.RenderStepped:Connect(function()
-            if dragging then
-                local mouse = UserInputService:GetMouseLocation()
-                local relativeX = math.clamp(mouse.X - sliderBg.AbsolutePosition.X, 0, sliderBg.AbsoluteSize.X)
-                local percentage = relativeX / sliderBg.AbsoluteSize.X
-                local value = minVal + (maxVal - minVal) * percentage
-                
-                -- Round based on range
-                if maxVal - minVal <= 10 then
-                    value = math.floor(value * 10) / 10 -- 1 decimal
-                else
-                    value = math.floor(value)
-                end
-                
-                settingsTable[settingKey] = value
-                sliderFill.Size = UDim2.new((value - minVal) / (maxVal - minVal), 0, 1, 0)
-                label.Text = name .. ": " .. value
-            end
-        end)
-        
-        return position + 60
     end
     
     -- PART CONTROLLER Section
@@ -320,16 +349,19 @@ function MiscModule.CreateUI(parent)
     yPos = yPos + 30
     
     local controlsInfo = Instance.new("TextLabel")
-    controlsInfo.Size = UDim2.new(1, -20, 0, 100)
+    controlsInfo.Size = UDim2.new(1, -20, 0, 130)
     controlsInfo.Position = UDim2.new(0, 10, 0, yPos)
     controlsInfo.BackgroundTransparency = 1
-    controlsInfo.Text = [[1. Click on any unanchored part
-2. Hold and drag to move the part
-3. Part follows your mouse on a plane
-4. Release mouse to stop dragging
-5. Press Escape to deselect part
+    controlsInfo.Text = [[1. Click on any unanchored part to select
+2. Drag the colored arrows to move on that axis
+   • Red arrow = X axis
+   • Green arrow = Y axis  
+   • Blue arrow = Z axis
+3. Movement is smooth and visible to others
+4. Press T to anchor/unanchor the part
+5. Press Escape to deselect
 
-Works exactly like Roblox Studio's Move tool!]]
+Works like Roblox Studio's Move tool!]]
     controlsInfo.Font = Enum.Font.Gotham
     controlsInfo.TextSize = 11
     controlsInfo.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -337,7 +369,7 @@ Works exactly like Roblox Studio's Move tool!]]
     controlsInfo.TextYAlignment = Enum.TextYAlignment.Top
     controlsInfo.TextWrapped = true
     controlsInfo.Parent = miscContent
-    yPos = yPos + 110
+    yPos = yPos + 140
     
     miscContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
