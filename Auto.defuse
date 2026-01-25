@@ -22,6 +22,7 @@ local DEFUSE_ANIMATION_IDS = {
 local detectionCircles = {} -- Store circles for each character
 local monitoredCharacters = {} -- Track all characters
 local checkedAnimations = {} -- Track animations we've already detected
+local lastRadius = 30 -- Cache last radius to detect changes
 
 -- Check if character is in Monsters team
 local function isMonstersTeam(character)
@@ -54,19 +55,15 @@ local function getDistance(character)
     return (LocalPlayer.Character.HumanoidRootPart.Position - targetHRP.Position).Magnitude
 end
 
--- Create outline circle using multiple thin parts
+-- Create outline circle using fewer segments for performance
 local function createDetectionCircle(character)
-    if detectionCircles[character] then
-        for _, part in pairs(detectionCircles[character]) do
-            part:Destroy()
-        end
-    end
+    if detectionCircles[character] then return end -- Don't recreate if exists
     
     local hrp = character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
     
     local radius = AutoDefuseSettings.DetectionRadius or 30
-    local segments = 64 -- Number of segments for smooth circle
+    local segments = 32 -- Reduced from 64 for performance
     local circleparts = {}
     
     for i = 1, segments do
@@ -78,20 +75,18 @@ local function createDetectionCircle(character)
         local x2 = math.cos(nextAngle) * radius
         local z2 = math.sin(nextAngle) * radius
         
-        -- Calculate segment position and size
         local midX = (x1 + x2) / 2
         local midZ = (z1 + z2) / 2
         local length = math.sqrt((x2 - x1)^2 + (z2 - z1)^2)
         
         local segment = Instance.new("Part")
         segment.Name = "CircleSegment"
-        segment.Size = Vector3.new(0.15, 0.15, length) -- Thin outline
+        segment.Size = Vector3.new(0.15, 0.15, length)
         segment.Anchored = true
         segment.CanCollide = false
         segment.Material = Enum.Material.SmoothPlastic
         segment.Transparency = 0
         
-        -- Position and rotate segment
         local segmentAngle = math.atan2(z2 - z1, x2 - x1)
         segment.CFrame = hrp.CFrame * CFrame.new(midX, 0, midZ) * CFrame.Angles(0, segmentAngle, 0)
         
@@ -112,49 +107,54 @@ local function removeDetectionCircle(character)
     end
 end
 
--- Update circle colors and position for all characters
+-- Update circle colors and position
 local function updateCircles()
-    -- Create circles for Monsters team characters if ShowCircle is enabled
+    local radius = AutoDefuseSettings.DetectionRadius or 30
+    
+    -- Only recreate circles if radius changed
+    if radius ~= lastRadius then
+        for character, _ in pairs(detectionCircles) do
+            removeDetectionCircle(character)
+        end
+        lastRadius = radius
+    end
+    
+    -- Manage circle visibility
     if AutoDefuseSettings.ShowCircle then
         for character, _ in pairs(monitoredCharacters) do
             if character and character.Parent then
-                -- Only show circle for Monsters team
                 if isMonstersTeam(character) then
                     if not detectionCircles[character] then
                         createDetectionCircle(character)
                     end
                 else
-                    -- Remove circle if not Monsters team
                     removeDetectionCircle(character)
                 end
             end
         end
     else
-        -- Remove all circles if ShowCircle is disabled
-        for character, parts in pairs(detectionCircles) do
-            for _, part in pairs(parts) do
-                part:Destroy()
-            end
-            detectionCircles[character] = nil
+        -- Remove all circles if disabled
+        for character, _ in pairs(detectionCircles) do
+            removeDetectionCircle(character)
         end
+        return
     end
     
-    -- Update existing circles
+    -- Update existing circles (position and color only)
     for character, parts in pairs(detectionCircles) do
         if character and character.Parent then
-            local distance = getDistance(character)
-            local radius = AutoDefuseSettings.DetectionRadius or 30
-            local color = distance <= radius and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-            
-            -- Update position and color
             local hrp = character:FindFirstChild("HumanoidRootPart")
             if hrp then
+                local distance = getDistance(character)
+                local color = distance <= radius and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                
                 local segments = #parts
-                for i, segment in pairs(parts) do
+                for i, segment in ipairs(parts) do
                     if segment and segment.Parent then
+                        -- Only update color (not position every frame for performance)
                         segment.Color = color
                         
-                        -- Recalculate position
+                        -- Update position
                         local angle = (i / segments) * math.pi * 2
                         local nextAngle = ((i + 1) / segments) * math.pi * 2
                         
@@ -165,9 +165,6 @@ local function updateCircles()
                         
                         local midX = (x1 + x2) / 2
                         local midZ = (z1 + z2) / 2
-                        local length = math.sqrt((x2 - x1)^2 + (z2 - z1)^2)
-                        
-                        segment.Size = Vector3.new(0.15, 0.15, length)
                         
                         local segmentAngle = math.atan2(z2 - z1, x2 - x1)
                         segment.CFrame = hrp.CFrame * CFrame.new(midX, 0, midZ) * CFrame.Angles(0, segmentAngle, 0)
@@ -175,7 +172,6 @@ local function updateCircles()
                 end
             end
         else
-            -- Character removed, clean up
             for _, part in pairs(parts) do
                 if part then part:Destroy() end
             end
@@ -185,7 +181,7 @@ local function updateCircles()
     end
 end
 
--- Check for playing animations every 0.01 seconds
+-- Check for playing animations
 local function checkAnimations()
     for character, _ in pairs(monitoredCharacters) do
         if character and character.Parent then
@@ -198,13 +194,12 @@ local function checkAnimations()
                     end)
                     
                     if success and tracks then
-                        for _, track in pairs(tracks) do
+                        for _, track in ipairs(tracks) do
                             if track.IsPlaying and track.Animation then
                                 local animId = track.Animation.AnimationId
                                 local numericId = animId:match("%d+")
                                 
                                 if numericId and isDefuseAnimation(numericId) then
-                                    -- Create unique key to prevent duplicate detections
                                     local checkKey = character.Name .. "_" .. numericId .. "_" .. math.floor(track.TimePosition * 10)
                                     
                                     if not checkedAnimations[checkKey] then
@@ -212,7 +207,6 @@ local function checkAnimations()
                                         
                                         print("Animation detected:", numericId, "from", character.Name)
                                         
-                                        -- Check distance
                                         local radius = AutoDefuseSettings.DetectionRadius or 30
                                         local distance = getDistance(character)
                                         
@@ -224,24 +218,20 @@ local function checkAnimations()
                                             local delayMs = AutoDefuseSettings.Delay or 3000
                                             print("Waiting", delayMs, "ms...")
                                             
-                                            -- Wait for delay (convert ms to seconds)
                                             task.spawn(function()
                                                 task.wait(delayMs / 1000)
                                                 
-                                                -- Send left click
                                                 VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
                                                 task.wait(0.05)
                                                 VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
                                                 
                                                 print("Defused! (Clicked)")
                                                 
-                                                -- Clean up check key after 2 seconds
                                                 task.wait(2)
                                                 checkedAnimations[checkKey] = nil
                                             end)
                                         else
                                             print("Too far away:", math.floor(distance), "studs (need ≤" .. radius .. ")")
-                                            -- Clean up check key
                                             task.wait(1)
                                             checkedAnimations[checkKey] = nil
                                         end
@@ -256,18 +246,16 @@ local function checkAnimations()
     end
 end
 
--- Hook a character (add to monitored list)
+-- Hook a character
 local function hookCharacter(character)
     if not AutoDefuseSettings.Enabled then return end
-    
-    -- Add to monitored characters
     monitoredCharacters[character] = true
-    
     print("Monitoring character:", character.Name)
 end
 
 -- Start monitoring
 local updateLoop = nil
+local animLoop = nil
 
 local function startMonitoring()
     local characters = Workspace:FindFirstChild("Characters")
@@ -277,7 +265,6 @@ local function startMonitoring()
         characters = Workspace
     end
     
-    -- Hook existing characters
     for _, character in ipairs(characters:GetChildren()) do
         if character:IsA("Model") then
             task.spawn(function()
@@ -286,11 +273,9 @@ local function startMonitoring()
         end
     end
     
-    -- Hook new characters
     characters.ChildAdded:Connect(function(character)
         if not AutoDefuseSettings.Enabled then return end
-        
-        task.wait(0.1) -- Let character fully load
+        task.wait(0.1)
         if character:IsA("Model") then
             task.spawn(function()
                 hookCharacter(character)
@@ -298,22 +283,29 @@ local function startMonitoring()
         end
     end)
     
-    -- Clean up removed characters
     characters.ChildRemoved:Connect(function(character)
         monitoredCharacters[character] = nil
         removeDetectionCircle(character)
     end)
     
-    -- Main loop - check every 0.01 seconds
+    -- Split updates into two loops for better performance
+    -- Circle updates: 30 FPS (0.033s)
     updateLoop = task.spawn(function()
         while AutoDefuseSettings.Enabled do
             pcall(updateCircles)
-            pcall(checkAnimations)
-            task.wait(0.01) -- 0.01 second interval
+            task.wait(0.033) -- ~30 FPS for circles
         end
     end)
     
-    print("Auto Defuse enabled - Checking every 0.01 seconds")
+    -- Animation checks: 100 FPS (0.01s) for responsive detection
+    animLoop = task.spawn(function()
+        while AutoDefuseSettings.Enabled do
+            pcall(checkAnimations)
+            task.wait(0.01) -- 0.01s for animation detection
+        end
+    end)
+    
+    print("Auto Defuse enabled - Optimized performance")
     print("Target IDs:", table.concat(DEFUSE_ANIMATION_IDS, ", "))
     print("Detection Radius:", AutoDefuseSettings.DetectionRadius or 30, "studs")
     print("Delay:", AutoDefuseSettings.Delay or 3000, "ms")
@@ -327,7 +319,11 @@ local function stopMonitoring()
         updateLoop = nil
     end
     
-    -- Remove all circles
+    if animLoop then
+        task.cancel(animLoop)
+        animLoop = nil
+    end
+    
     for character, parts in pairs(detectionCircles) do
         for _, part in pairs(parts) do
             part:Destroy()
