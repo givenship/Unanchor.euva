@@ -7,10 +7,15 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
 -- Get settings from global
+if not getgenv then
+    warn("getgenv not available - executor not supported")
+    return false
+end
+
 local AutoDefuseSettings = getgenv().AutoDefuseSettings
 if not AutoDefuseSettings then
     warn("AutoDefuseSettings not found - load Combat GUI first")
-    return
+    return false
 end
 
 -- Target animation IDs
