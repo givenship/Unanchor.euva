@@ -5,11 +5,11 @@ local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 
--- GitHub Raw URLs for modules (REPLACE THESE WITH YOUR ACTUAL GITHUB RAW URLS)
+-- GitHub Raw URLs for modules
 local ModuleURLs = {
-    Visual = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/esp-module.lua",
-    Combat = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/combat-module.lua",
-    Player = "https://raw.githubusercontent.com/https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Player",
+    Visual = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Visual",
+    Combat = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Combat",
+    Player = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Player",
     Misc = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/misc-module.lua",
     Settings = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Settings"
 }
