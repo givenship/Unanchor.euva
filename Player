@@ -199,11 +199,21 @@ local function toggleInvisible()
         -- Movement speed
         local moveSpeed = 0.5
         
-        -- Lock position and handle input
+        -- Movement loop
         carpetLoop = RunService.RenderStepped:Connect(function()
             pcall(function()
                 local root = getRoot(LocalPlayer.Character)
                 if not root then return end
+                
+                -- Noclip ground (Workspace.Map)
+                local map = Workspace:FindFirstChild("Map")
+                if map then
+                    for _, part in pairs(map:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
+                        end
+                    end
+                end
                 
                 -- Get camera direction
                 local camera = workspace.CurrentCamera
@@ -232,14 +242,15 @@ local function toggleInvisible()
                 end
                 
                 -- Normalize and apply speed
+                local nextPosition = invisiblePosition
                 if moveDirection.Magnitude > 0 then
                     moveDirection = moveDirection.Unit * moveSpeed
-                    invisiblePosition = invisiblePosition + moveDirection
+                    nextPosition = invisiblePosition + moveDirection
                 end
                 
-                -- Keep on ground if enabled
+                -- Keep on ground if enabled - predict next position
                 if getgenv().PlayerSettings.KeepOnGround then
-                    local rayOrigin = invisiblePosition + Vector3.new(0, 5, 0)
+                    local rayOrigin = nextPosition + Vector3.new(0, 50, 0)
                     local rayDirection = Vector3.new(0, -100, 0)
                     
                     local raycastParams = RaycastParams.new()
@@ -249,24 +260,34 @@ local function toggleInvisible()
                     local rayResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
                     
                     if rayResult then
-                        -- Snap to ground position
-                        invisiblePosition = Vector3.new(
-                            invisiblePosition.X,
+                        -- Adjust Y to ground height before moving
+                        nextPosition = Vector3.new(
+                            nextPosition.X,
                             rayResult.Position.Y,
-                            invisiblePosition.Z
+                            nextPosition.Z
                         )
                     end
                 end
                 
-                -- Lock character to invisible position
+                -- Update position
+                invisiblePosition = nextPosition
+                
+                -- Set character position (don't lock, just move)
                 root.CFrame = CFrame.new(invisiblePosition)
-                root.Velocity = Vector3.new(0, 0, 0)
-                root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
             end)
         end)
         
-        print("Invisible enabled - Position locked, use WASD/Space/Shift to move")
+        print("Invisible enabled - Ground noclipped, use WASD/Space/Shift to move")
     else
+        -- Re-enable ground collision
+        local map = Workspace:FindFirstChild("Map")
+        if map then
+            for _, part in pairs(map:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
         invisiblePosition = nil
         print("Invisible disabled")
     end
