@@ -1,5 +1,6 @@
--- Block Teleport & Part Controller Script
--- Combined system with organized GUI
+-- Part Controller Script
+-- Move Tool, Rotate Tool, Reset Rotation
+-- Method-based control
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -8,15 +9,6 @@ local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 local mouse = LocalPlayer:GetMouse()
-
--- Variables
-local tpEnabled = false
-local frozenParts = {}
-local activeForces = {}
-local updateConnection = nil
-local currentShape = "Block"
-local autoRotateEnabled = false
-local autoRotateConnection = nil
 
 -- Part Controller Variables
 local moveToolEnabled = false
@@ -27,482 +19,15 @@ local arcHandles = nil
 local selectedConnectedParts = {}
 local moveMode = "move" -- "move" or "rotate"
 
--- Dex Mode Variables
-local dexModeEnabled = false
-local selectedPlayer = nil
-local playerHighlight = nil
-
--- Create GUI
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BlockTeleportGUI"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = CoreGui
-
--- Main Frame
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 300, 0, 500)
-mainFrame.Position = UDim2.new(0.5, -150, 0.5, -250)
-mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-mainFrame.BorderSizePixel = 0
-mainFrame.Parent = screenGui
-
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 10)
-mainCorner.Parent = mainFrame
-
--- Title Bar
-local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 40)
-titleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-titleBar.BorderSizePixel = 0
-titleBar.Parent = mainFrame
-
-local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 10)
-titleCorner.Parent = titleBar
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -80, 1, 0)
-title.BackgroundTransparency = 1
-title.Text = "Block Teleport Control"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.TextSize = 16
-title.Font = Enum.Font.GothamBold
-title.Parent = titleBar
-
--- Minimize Button
-local minimizeBtn = Instance.new("TextButton")
-minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
-minimizeBtn.Position = UDim2.new(1, -70, 0, 5)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-minimizeBtn.Text = "−"
-minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-minimizeBtn.TextSize = 20
-minimizeBtn.Font = Enum.Font.GothamBold
-minimizeBtn.Parent = titleBar
-
-local minCorner = Instance.new("UICorner")
-minCorner.CornerRadius = UDim.new(0, 6)
-minCorner.Parent = minimizeBtn
-
--- Close Button
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 30, 0, 30)
-closeBtn.Position = UDim2.new(1, -35, 0, 5)
-closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-closeBtn.Text = "×"
-closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeBtn.TextSize = 22
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.Parent = titleBar
-
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 6)
-closeCorner.Parent = closeBtn
-
--- Content Frame
-local contentFrame = Instance.new("ScrollingFrame")
-contentFrame.Size = UDim2.new(1, 0, 1, -40)
-contentFrame.Position = UDim2.new(0, 0, 0, 40)
-contentFrame.BackgroundTransparency = 1
-contentFrame.ScrollBarThickness = 4
-contentFrame.BorderSizePixel = 0
-contentFrame.Parent = mainFrame
-
-local yPos = 10
-
--- Helper Functions
-local function createSection(name, pos)
-    local section = Instance.new("TextLabel")
-    section.Size = UDim2.new(1, -20, 0, 25)
-    section.Position = UDim2.new(0, 10, 0, pos)
-    section.BackgroundTransparency = 1
-    section.Text = name
-    section.TextColor3 = Color3.fromRGB(200, 200, 200)
-    section.TextSize = 14
-    section.Font = Enum.Font.GothamBold
-    section.TextXAlignment = Enum.TextXAlignment.Left
-    section.Parent = contentFrame
-    return pos + 30
-end
-
-local function createButton(text, pos, color)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -20, 0, 40)
-    btn.Position = UDim2.new(0, 10, 0, pos)
-    btn.BackgroundColor3 = color or Color3.fromRGB(60, 60, 60)
-    btn.Text = text
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.TextSize = 14
-    btn.Font = Enum.Font.GothamBold
-    btn.Parent = contentFrame
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = btn
-    
-    return btn, pos + 45
-end
-
-local function createCheckbox(text, pos)
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, -20, 0, 30)
-    frame.Position = UDim2.new(0, 10, 0, pos)
-    frame.BackgroundTransparency = 1
-    frame.Parent = contentFrame
-    
-    local checkbox = Instance.new("TextButton")
-    checkbox.Size = UDim2.new(0, 25, 0, 25)
-    checkbox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    checkbox.Text = ""
-    checkbox.Parent = frame
-    
-    local checkCorner = Instance.new("UICorner")
-    checkCorner.CornerRadius = UDim.new(0, 4)
-    checkCorner.Parent = checkbox
-    
-    local checkmark = Instance.new("TextLabel")
-    checkmark.Size = UDim2.new(1, 0, 1, 0)
-    checkmark.BackgroundTransparency = 1
-    checkmark.Text = "✓"
-    checkmark.TextColor3 = Color3.fromRGB(0, 255, 0)
-    checkmark.TextSize = 18
-    checkmark.Font = Enum.Font.GothamBold
-    checkmark.Visible = false
-    checkmark.Parent = checkbox
-    
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -35, 1, 0)
-    label.Position = UDim2.new(0, 35, 0, 0)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Color3.fromRGB(200, 200, 200)
-    label.TextSize = 13
-    label.Font = Enum.Font.Gotham
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = frame
-    
-    return checkbox, checkmark, pos + 35
-end
-
-local function createLabel(text, pos)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -20, 0, 25)
-    label.Position = UDim2.new(0, 10, 0, pos)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Color3.fromRGB(150, 150, 150)
-    label.TextSize = 12
-    label.Font = Enum.Font.Gotham
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.TextWrapped = true
-    label.Parent = contentFrame
-    return label, pos + 30
-end
-
--- SHAPE SELECTION
-yPos = createSection("SHAPE:", yPos)
-
-local shapes = {"Block", "Heart", "Scaffold"}
-local shapeButtons = {}
-
-for i, shapeName in ipairs(shapes) do
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 85, 0, 35)
-    btn.Position = UDim2.new(0, 10 + (i-1) * 93, 0, yPos)
-    btn.BackgroundColor3 = shapeName == "Block" and Color3.fromRGB(70, 130, 180) or Color3.fromRGB(60, 60, 60)
-    btn.Text = shapeName
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.TextSize = 13
-    btn.Font = Enum.Font.Gotham
-    btn.Parent = contentFrame
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = btn
-    
-    shapeButtons[shapeName] = btn
-    
-    btn.MouseButton1Click:Connect(function()
-        currentShape = shapeName
-        for name, button in pairs(shapeButtons) do
-            button.BackgroundColor3 = name == shapeName and Color3.fromRGB(70, 130, 180) or Color3.fromRGB(60, 60, 60)
-        end
-    end)
-end
-
-yPos = yPos + 45
-
--- TP MODE
-yPos = createSection("TP MODE:", yPos)
-
-local toggleBtn, newPos = createButton("Enable TP Mode", yPos, Color3.fromRGB(220, 50, 50))
-yPos = newPos
-
-local autoRotateCheck, autoRotateMark, newPos = createCheckbox("Auto Rotate", yPos)
-yPos = newPos
-
--- DEX MODE
-yPos = yPos + 5
-yPos = createSection("DEX MODE:", yPos)
-
-local dexModeBtn, newPos = createButton("Enable Dex Mode", yPos, Color3.fromRGB(100, 100, 100))
-yPos = newPos
-
-local dexStatusLabel, newPos = createLabel("Currently: None (You)", yPos)
-dexStatusLabel.Visible = false
-yPos = newPos
-
--- PART CONTROLLER
-yPos = yPos + 5
-yPos = createSection("PART CONTROLLER:", yPos)
-
-local moveToolBtn, newPos = createButton("Move Tool", yPos, Color3.fromRGB(100, 100, 100))
-yPos = newPos
-
-local rotateToolBtn, newPos = createButton("Rotate Tool", yPos, Color3.fromRGB(100, 100, 100))
-yPos = newPos
-
-local resetRotBtn, newPos = createButton("Reset Rotation", yPos, Color3.fromRGB(80, 80, 80))
-yPos = newPos
-
-local moveStatusLabel, newPos = createLabel("Move Tool: Click parts to move", yPos)
-moveStatusLabel.Visible = false
-yPos = newPos
-
--- STATUS
-yPos = yPos + 5
-local statusLabel, newPos = createLabel("Status: Disabled", yPos)
-yPos = newPos
-
--- CLEAR BUTTON
-local clearBtn, newPos = createButton("Clear All Forces", yPos, Color3.fromRGB(60, 60, 60))
-yPos = newPos
-
-contentFrame.CanvasSize = UDim2.new(0, 0, 0, yPos + 10)
-
--- Draggable
-local dragging = false
-local dragInput, mousePos, framePos
-
-titleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        mousePos = input.Position
-        framePos = mainFrame.Position
-        
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-titleBar.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - mousePos
-        mainFrame.Position = UDim2.new(
-            framePos.X.Scale,
-            framePos.X.Offset + delta.X,
-            framePos.Y.Scale,
-            framePos.Y.Offset + delta.Y
-        )
-    end
-end)
-
 -- Helper Functions
 local function isBodyPart(part)
-    local bodyPartNames = {"Torso", "Head", "Right Arm", "Left Arm", "Right Leg", "Left Leg", "HumanoidRootPart"}
-    for _, name in ipairs(bodyPartNames) do
-        if part.Name == name then return true end
-    end
-    return false
+    local bodyPartNames = {"Torso", "Head", "Right Arm", "Left Arm", "Right Leg", "Left Leg", "HumanoidRootPart", 
+                           "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm",
+                           "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg", "LeftHand", "RightHand",
+                           "LeftFoot", "RightFoot"}
+    return table.find(bodyPartNames, part.Name) ~= nil
 end
 
-local function getTargetPlayer()
-    return selectedPlayer or LocalPlayer
-end
-
-local function collectUnanchoredParts()
-    local parts = {}
-    for _, part in ipairs(workspace:GetDescendants()) do
-        if (part:IsA("BasePart") or part:IsA("UnionOperation")) and not part.Anchored and not isBodyPart(part) then
-            local isPlayerPart = false
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr.Character and part:IsDescendantOf(plr.Character) then
-                    isPlayerPart = true
-                    break
-                end
-            end
-            if not isPlayerPart then
-                table.insert(parts, part)
-            end
-        end
-    end
-    return parts
-end
-
--- Shape Calculations
-local function calculateBlockPosition(index, totalParts, spacing)
-    local partsPerSide = math.max(1, math.ceil(math.pow(totalParts, 1/3)))
-    local i = index - 1
-    local x = (i % partsPerSide)
-    local y = math.floor(i / (partsPerSide * partsPerSide))
-    local z = math.floor((i % (partsPerSide * partsPerSide)) / partsPerSide)
-    return Vector3.new(
-        (x - partsPerSide / 2) * spacing,
-        (y - partsPerSide / 2) * spacing,
-        (z - partsPerSide / 2) * spacing
-    )
-end
-
-local function calculateHeartPosition(index, totalParts, spacing)
-    local i = index - 1
-    local heartLayers = {
-        {-2, -1, 0, 1, 2},
-        {-3, -2, -1, 0, 1, 2, 3},
-        {-3, -2, -1, 0, 1, 2, 3},
-        {-2, -1, 0, 1, 2},
-        {-2, -1, 0, 1, 2},
-        {-1, 0, 1},
-        {-1, 0, 1},
-        {0},
-    }
-    
-    local posCount = 0
-    for layerIndex, layer in ipairs(heartLayers) do
-        for _, xPos in ipairs(layer) do
-            for zPos = -3, 3 do
-                if math.abs(zPos) <= 3 - math.floor(layerIndex / 3) then
-                    if posCount == i then
-                        local y = (#heartLayers - layerIndex) * spacing * 0.8
-                        return Vector3.new(xPos * spacing, y, zPos * spacing * 0.8)
-                    end
-                    posCount = posCount + 1
-                end
-            end
-        end
-    end
-    return Vector3.new(0, #heartLayers * spacing, 0)
-end
-
-local function calculateScaffoldPosition(index, totalParts, spacing)
-    local platformLayers = 3
-    local i = index - 1
-    local partsPerLayer = math.ceil(totalParts / platformLayers)
-    local layer = math.floor(i / partsPerLayer)
-    local posInLayer = i % partsPerLayer
-    local partsPerRow = math.ceil(math.sqrt(partsPerLayer))
-    local row = math.floor(posInLayer / partsPerRow)
-    local col = posInLayer % partsPerRow
-    
-    local x = (col - partsPerRow / 2) * spacing
-    local z = (row - partsPerRow / 2) * spacing
-    local y = -3 - (layer * spacing)
-    
-    local distance = math.sqrt(x*x + z*z)
-    if distance > 10 then
-        local scale = 10 / distance
-        x, z = x * scale, z * scale
-    end
-    
-    return Vector3.new(x, y, z)
-end
-
-local function getShapePosition(index, totalParts, spacing)
-    if currentShape == "Block" then
-        return calculateBlockPosition(index, totalParts, spacing)
-    elseif currentShape == "Heart" then
-        return calculateHeartPosition(index, totalParts, spacing)
-    elseif currentShape == "Scaffold" then
-        return calculateScaffoldPosition(index, totalParts, spacing)
-    end
-    return calculateBlockPosition(index, totalParts, spacing)
-end
-
-local function clearAllForces()
-    for _, part in ipairs(frozenParts) do
-        if part and part.Parent then
-            for _, child in ipairs(part:GetChildren()) do
-                if child:IsA("BodyPosition") or child:IsA("BodyGyro") then
-                    child:Destroy()
-                end
-            end
-        end
-    end
-    frozenParts = {}
-    activeForces = {}
-end
-
-local function applyBlockTeleport()
-    local targetPlayer = getTargetPlayer()
-    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        statusLabel.Text = "Status: Character not found"
-        return
-    end
-    
-    local targetPos = targetPlayer.Character.HumanoidRootPart.Position
-    local heightOffset = 7
-    local spacing = 2
-    local unanchoredParts = collectUnanchoredParts()
-    
-    if #unanchoredParts == 0 then
-        statusLabel.Text = "Status: No unanchored parts found"
-        return
-    end
-    
-    clearAllForces()
-    
-    for index, part in ipairs(unanchoredParts) do
-        local offset = getShapePosition(index, #unanchoredParts, spacing) + Vector3.new(0, heightOffset, 0)
-        
-        local bp = Instance.new("BodyPosition")
-        bp.Parent = part
-        bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        bp.Position = targetPos + offset
-        bp.P = 50000
-        bp.D = 2000
-        
-        local bg = Instance.new("BodyGyro")
-        bg.Parent = part
-        bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        bg.P = 50000
-        bg.D = 2000
-        
-        table.insert(frozenParts, part)
-        table.insert(activeForces, {part = part, bp = bp, bg = bg, index = index})
-    end
-    
-    statusLabel.Text = "Status: Active - " .. currentShape .. " (" .. #unanchoredParts .. " parts)"
-end
-
-local function startUpdateLoop()
-    if updateConnection then updateConnection:Disconnect() end
-    
-    updateConnection = RunService.Heartbeat:Connect(function()
-        if not tpEnabled or #activeForces == 0 then return end
-        local targetPlayer = getTargetPlayer()
-        if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
-        
-        local targetPos = targetPlayer.Character.HumanoidRootPart.Position
-        
-        for _, data in ipairs(activeForces) do
-            if data.part and data.part.Parent and data.bp and data.bp.Parent then
-                local offset = getShapePosition(data.index, #activeForces, 2) + Vector3.new(0, 7, 0)
-                data.bp.Position = targetPos + offset
-            end
-        end
-    end)
-end
-
--- Part Controller Functions
 local function getConnectedParts(part)
     local connectedParts = {part}
     local checkedParts = {}
@@ -514,12 +39,21 @@ local function getConnectedParts(part)
             checkedParts[currentPart] = true
             
             for _, child in ipairs(currentPart:GetChildren()) do
-                if child:IsA("Weld") or child:IsA("WeldConstraint") or child:IsA("Motor6D") then
+                if child:IsA("Weld") or child:IsA("WeldConstraint") or child:IsA("Motor6D") or child:IsA("ManualWeld") then
                     local connectedPart = child.Part0 == currentPart and child.Part1 or child.Part0
                     if connectedPart and not checkedParts[connectedPart] then
                         table.insert(connectedParts, connectedPart)
                         table.insert(partsToCheck, connectedPart)
                     end
+                end
+            end
+            
+            -- Check for joints
+            for _, joint in ipairs(currentPart:GetJoints()) do
+                local connectedPart = joint.Part0 == currentPart and joint.Part1 or joint.Part0
+                if connectedPart and not checkedParts[connectedPart] then
+                    table.insert(connectedParts, connectedPart)
+                    table.insert(partsToCheck, connectedPart)
                 end
             end
         end
@@ -529,9 +63,15 @@ local function getConnectedParts(part)
 end
 
 local function createSelectionBox(part)
-    if selectionBox then selectionBox:Destroy() end
-    if handles then handles:Destroy() end
-    if arcHandles then arcHandles:Destroy() end
+    if selectionBox then
+        selectionBox:Destroy()
+    end
+    if handles then
+        handles:Destroy()
+    end
+    if arcHandles then
+        arcHandles:Destroy()
+    end
     
     selectedConnectedParts = getConnectedParts(part)
     
@@ -542,6 +82,7 @@ local function createSelectionBox(part)
     selectionBox.Parent = part
     
     if moveMode == "move" then
+        -- Create Movement Handles
         handles = Instance.new("Handles")
         handles.Adornee = part
         handles.Color3 = Color3.fromRGB(0, 170, 255)
@@ -554,22 +95,31 @@ local function createSelectionBox(part)
             local moveVector = Vector3.new()
             local adjustedDistance = distance * 0.5
             
-            if face == Enum.NormalId.Top then moveVector = Vector3.new(0, adjustedDistance, 0)
-            elseif face == Enum.NormalId.Bottom then moveVector = Vector3.new(0, -adjustedDistance, 0)
-            elseif face == Enum.NormalId.Right then moveVector = Vector3.new(adjustedDistance, 0, 0)
-            elseif face == Enum.NormalId.Left then moveVector = Vector3.new(-adjustedDistance, 0, 0)
-            elseif face == Enum.NormalId.Front then moveVector = Vector3.new(0, 0, -adjustedDistance)
-            elseif face == Enum.NormalId.Back then moveVector = Vector3.new(0, 0, adjustedDistance)
+            if face == Enum.NormalId.Top then
+                moveVector = Vector3.new(0, adjustedDistance, 0)
+            elseif face == Enum.NormalId.Bottom then
+                moveVector = Vector3.new(0, -adjustedDistance, 0)
+            elseif face == Enum.NormalId.Right then
+                moveVector = Vector3.new(adjustedDistance, 0, 0)
+            elseif face == Enum.NormalId.Left then
+                moveVector = Vector3.new(-adjustedDistance, 0, 0)
+            elseif face == Enum.NormalId.Front then
+                moveVector = Vector3.new(0, 0, -adjustedDistance)
+            elseif face == Enum.NormalId.Back then
+                moveVector = Vector3.new(0, 0, adjustedDistance)
             end
             
             for _, connectedPart in ipairs(selectedConnectedParts) do
                 if connectedPart and connectedPart.Parent then
                     local bp = connectedPart:FindFirstChild("MoveToolPosition")
-                    if bp then bp.Position = bp.Position + moveVector end
+                    if bp then
+                        bp.Position = bp.Position + moveVector
+                    end
                 end
             end
         end)
     elseif moveMode == "rotate" then
+        -- Create Rotation Handles
         arcHandles = Instance.new("ArcHandles")
         arcHandles.Adornee = part
         arcHandles.Color3 = Color3.fromRGB(255, 100, 100)
@@ -579,9 +129,12 @@ local function createSelectionBox(part)
             if not selectedPart or not selectedPart.Parent then return end
             
             local rotationCFrame = CFrame.new()
-            if axis == Enum.Axis.X then rotationCFrame = CFrame.Angles(relativeAngle, 0, 0)
-            elseif axis == Enum.Axis.Y then rotationCFrame = CFrame.Angles(0, relativeAngle, 0)
-            elseif axis == Enum.Axis.Z then rotationCFrame = CFrame.Angles(0, 0, relativeAngle)
+            if axis == Enum.Axis.X then
+                rotationCFrame = CFrame.Angles(relativeAngle, 0, 0)
+            elseif axis == Enum.Axis.Y then
+                rotationCFrame = CFrame.Angles(0, relativeAngle, 0)
+            elseif axis == Enum.Axis.Z then
+                rotationCFrame = CFrame.Angles(0, 0, relativeAngle)
             end
             
             local centerPos = selectedPart.Position
@@ -591,8 +144,12 @@ local function createSelectionBox(part)
                     if bg then
                         local offset = connectedPart.Position - centerPos
                         local rotatedOffset = rotationCFrame:VectorToWorldSpace(offset)
+                        
                         local bp = connectedPart:FindFirstChild("MoveToolPosition")
-                        if bp then bp.Position = centerPos + rotatedOffset end
+                        if bp then
+                            bp.Position = centerPos + rotatedOffset
+                        end
+                        
                         bg.CFrame = bg.CFrame * rotationCFrame
                     end
                 end
@@ -600,6 +157,7 @@ local function createSelectionBox(part)
         end)
     end
     
+    -- Apply BodyPosition and BodyGyro to all connected parts
     for _, connectedPart in ipairs(selectedConnectedParts) do
         if connectedPart and connectedPart.Parent then
             local bp = Instance.new("BodyPosition")
@@ -626,211 +184,204 @@ local function removeSelectionBox()
         if connectedPart and connectedPart.Parent then
             local bp = connectedPart:FindFirstChild("MoveToolPosition")
             if bp then bp:Destroy() end
+            
             local bg = connectedPart:FindFirstChild("MoveToolGyro")
             if bg then bg:Destroy() end
         end
     end
+    
     selectedConnectedParts = {}
-    if selectionBox then selectionBox:Destroy(); selectionBox = nil end
-    if handles then handles:Destroy(); handles = nil end
-    if arcHandles then arcHandles:Destroy(); arcHandles = nil end
-end
-
--- Dex Mode Functions
-local function highlightPlayer(targetPlayer)
-    if playerHighlight then playerHighlight:Destroy() end
     
-    if targetPlayer and targetPlayer.Character then
-        playerHighlight = Instance.new("Highlight")
-        playerHighlight.Adornee = targetPlayer.Character
-        playerHighlight.FillColor = Color3.fromRGB(170, 0, 255)
-        playerHighlight.OutlineColor = Color3.fromRGB(255, 0, 255)
-        playerHighlight.FillTransparency = 0.5
-        playerHighlight.Parent = targetPlayer.Character
+    if selectionBox then
+        selectionBox:Destroy()
+        selectionBox = nil
+    end
+    
+    if handles then
+        handles:Destroy()
+        handles = nil
+    end
+    
+    if arcHandles then
+        arcHandles:Destroy()
+        arcHandles = nil
     end
 end
 
--- Button Events
-toggleBtn.MouseButton1Click:Connect(function()
-    tpEnabled = not tpEnabled
-    
-    if tpEnabled then
-        toggleBtn.Text = "Disable TP Mode"
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 220, 50)
-        applyBlockTeleport()
-        startUpdateLoop()
-    else
-        toggleBtn.Text = "Enable TP Mode"
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-        statusLabel.Text = "Status: Disabled"
-        if updateConnection then updateConnection:Disconnect() end
+-- Clear all forces in workspace
+local function clearAllForces()
+    for _, part in ipairs(workspace:GetDescendants()) do
+        if part:IsA("BasePart") then
+            for _, child in ipairs(part:GetChildren()) do
+                if child.Name == "MoveToolPosition" or child.Name == "MoveToolGyro" then
+                    child:Destroy()
+                end
+            end
+        end
     end
-end)
-
-autoRotateCheck.MouseButton1Click:Connect(function()
-    autoRotateEnabled = not autoRotateEnabled
-    autoRotateMark.Visible = autoRotateEnabled
-    autoRotateCheck.BackgroundColor3 = autoRotateEnabled and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(60, 60, 60)
-end)
-
-dexModeBtn.MouseButton1Click:Connect(function()
-    dexModeEnabled = not dexModeEnabled
     
-    if dexModeEnabled then
-        if moveToolEnabled then
-            moveToolEnabled = false
-            moveToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-            rotateToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-            moveStatusLabel.Visible = false
-            removeSelectionBox()
+    removeSelectionBox()
+    selectedPart = nil
+    
+    print("All forces cleared")
+end
+
+-- Exported Methods
+getgenv().PartController = {
+    -- Enable move tool
+    EnableMoveTool = function()
+        if moveToolEnabled and moveMode == "move" then
+            print("Move tool already enabled")
+            return
         end
         
-        dexModeBtn.Text = "Disable Dex Mode"
-        dexModeBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 255)
-        dexStatusLabel.Visible = true
-    else
-        dexModeBtn.Text = "Enable Dex Mode"
-        dexModeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        dexStatusLabel.Visible = false
-        if playerHighlight then playerHighlight:Destroy() end
-        selectedPlayer = nil
-    end
-end)
-
-moveToolBtn.MouseButton1Click:Connect(function()
-    moveToolEnabled = not moveToolEnabled
-    moveMode = "move"
-    
-    if moveToolEnabled then
-        if dexModeEnabled then
-            dexModeEnabled = false
-            dexModeBtn.Text = "Enable Dex Mode"
-            dexModeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-            dexStatusLabel.Visible = false
+        moveToolEnabled = true
+        moveMode = "move"
+        
+        if selectedPart and selectedPart.Parent then
+            createSelectionBox(selectedPart)
         end
         
-        moveToolBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 220)
-        rotateToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        moveStatusLabel.Visible = true
-        moveStatusLabel.Text = "Move Tool: Click parts to move"
-    else
-        moveToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        moveStatusLabel.Visible = false
+        print("Move tool enabled - Click parts to select and drag arrows to move")
+    end,
+    
+    -- Enable rotate tool
+    EnableRotateTool = function()
+        if moveToolEnabled and moveMode == "rotate" then
+            print("Rotate tool already enabled")
+            return
+        end
+        
+        moveToolEnabled = true
+        moveMode = "rotate"
+        
+        if selectedPart and selectedPart.Parent then
+            createSelectionBox(selectedPart)
+        end
+        
+        print("Rotate tool enabled - Click parts to select and drag circles to rotate")
+    end,
+    
+    -- Disable tools
+    DisableTools = function()
+        moveToolEnabled = false
         removeSelectionBox()
         selectedPart = nil
-    end
-end)
-
-rotateToolBtn.MouseButton1Click:Connect(function()
-    moveToolEnabled = not moveToolEnabled
-    moveMode = "rotate"
+        print("Tools disabled")
+    end,
     
-    if moveToolEnabled then
-        if dexModeEnabled then
-            dexModeEnabled = false
-            dexModeBtn.Text = "Enable Dex Mode"
-            dexModeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-            dexStatusLabel.Visible = false
+    -- Reset rotation of selected part
+    ResetRotation = function()
+        if not selectedPart or not selectedPart.Parent then
+            warn("No part selected")
+            return
         end
         
-        rotateToolBtn.BackgroundColor3 = Color3.fromRGB(220, 100, 50)
-        moveToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        moveStatusLabel.Visible = true
-        moveStatusLabel.Text = "Rotate Tool: Drag circles to rotate"
-    else
-        rotateToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        moveStatusLabel.Visible = false
-        removeSelectionBox()
-        selectedPart = nil
-    end
-end)
-
-resetRotBtn.MouseButton1Click:Connect(function()
-    if selectedPart and #selectedConnectedParts > 0 then
         for _, connectedPart in ipairs(selectedConnectedParts) do
             if connectedPart and connectedPart.Parent then
                 local bg = connectedPart:FindFirstChild("MoveToolGyro")
-                if bg then bg.CFrame = CFrame.new(connectedPart.Position) end
+                if bg then
+                    bg.CFrame = CFrame.new(connectedPart.Position)
+                end
             end
         end
+        
+        print("Rotation reset for", selectedPart.Name)
+    end,
+    
+    -- Clear all forces
+    ClearAllForces = function()
+        clearAllForces()
+    end,
+    
+    -- Deselect current part
+    DeselectPart = function()
+        removeSelectionBox()
+        selectedPart = nil
+        print("Part deselected")
+    end,
+    
+    -- Get selected part
+    GetSelectedPart = function()
+        return selectedPart
+    end,
+    
+    -- Check if tools are enabled
+    IsEnabled = function()
+        return moveToolEnabled
+    end,
+    
+    -- Get current mode
+    GetMode = function()
+        return moveMode
     end
-end)
+}
 
-clearBtn.MouseButton1Click:Connect(function()
-    clearAllForces()
-    if updateConnection then updateConnection:Disconnect() end
-    tpEnabled = false
-    toggleBtn.Text = "Enable TP Mode"
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-    statusLabel.Text = "Status: Cleared"
-end)
-
-minimizeBtn.MouseButton1Click:Connect(function()
-    contentFrame.Visible = not contentFrame.Visible
-    mainFrame.Size = contentFrame.Visible and UDim2.new(0, 300, 0, 500) or UDim2.new(0, 300, 0, 40)
-end)
-
-closeBtn.MouseButton1Click:Connect(function()
-    clearAllForces()
-    if updateConnection then updateConnection:Disconnect() end
-    removeSelectionBox()
-    if playerHighlight then playerHighlight:Destroy() end
-    screenGui:Destroy()
-end)
-
--- Mouse Click
+-- Mouse Click Handler
 mouse.Button1Down:Connect(function()
-    if dexModeEnabled then
-        local target = mouse.Target
-        if target then
-            local character = target:FindFirstAncestorOfClass("Model")
-            if character and character:FindFirstChildOfClass("Humanoid") then
-                local targetPlayer = Players:GetPlayerFromCharacter(character)
-                if targetPlayer then
-                    selectedPlayer = targetPlayer
-                    highlightPlayer(targetPlayer)
-                    dexStatusLabel.Text = "Currently: " .. targetPlayer.Name
-                    return
-                end
+    if not moveToolEnabled then return end
+    
+    local target = mouse.Target
+    if target and (target:IsA("BasePart") or target:IsA("UnionOperation")) then
+        -- Check if it's not a character part
+        local isPlayerPart = false
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr.Character and target:IsDescendantOf(plr.Character) then
+                isPlayerPart = true
+                break
             end
         end
-        selectedPlayer = nil
-        if playerHighlight then playerHighlight:Destroy() end
-        dexStatusLabel.Text = "Currently: None (You)"
-    elseif moveToolEnabled then
-        local target = mouse.Target
-        if target and (target:IsA("BasePart") or target:IsA("UnionOperation")) and not target.Anchored then
-            local isPlayerPart = false
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr.Character and target:IsDescendantOf(plr.Character) then
-                    isPlayerPart = true
-                    break
-                end
-            end
-            
-            if not isPlayerPart and not isBodyPart(target) then
-                selectedPart = target
-                createSelectionBox(target)
-                moveStatusLabel.Text = "Selected: " .. target.Name
-            end
+        
+        if not target.Anchored and not isPlayerPart and not isBodyPart(target) then
+            selectedPart = target
+            createSelectionBox(target)
+            print("Selected:", target.Name, "| Connected parts:", #selectedConnectedParts)
         end
     end
 end)
 
--- Keyboard
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
+-- Keyboard Handler
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
     
     if moveToolEnabled and selectedPart then
         if input.KeyCode == Enum.KeyCode.Delete and selectedPart.Parent then
+            print("Deleting:", selectedPart.Name)
             selectedPart:Destroy()
             removeSelectionBox()
             selectedPart = nil
         elseif input.KeyCode == Enum.KeyCode.Escape then
             removeSelectionBox()
             selectedPart = nil
+            print("Part deselected")
+        elseif input.KeyCode == Enum.KeyCode.T then
+            selectedPart.Anchored = not selectedPart.Anchored
+            print(selectedPart.Name, selectedPart.Anchored and "ANCHORED" or "UNANCHORED")
+            if selectedPart.Anchored then
+                removeSelectionBox()
+                selectedPart = nil
+            end
         end
     end
 end)
 
-print("Block Teleport & Part Controller loaded!")
+print("Part Controller loaded!")
+print("")
+print("=== METHODS ===")
+print("PartController.EnableMoveTool() - Enable move tool")
+print("PartController.EnableRotateTool() - Enable rotate tool")
+print("PartController.DisableTools() - Disable tools")
+print("PartController.ResetRotation() - Reset rotation of selected part")
+print("PartController.ClearAllForces() - Clear all forces in workspace")
+print("PartController.DeselectPart() - Deselect current part")
+print("PartController.GetSelectedPart() - Get selected part")
+print("PartController.IsEnabled() - Check if tools are enabled")
+print("PartController.GetMode() - Get current mode ('move' or 'rotate')")
+print("")
+print("=== CONTROLS ===")
+print("Left Click - Select unanchored part")
+print("Drag Arrows - Move part (Move Tool)")
+print("Drag Circles - Rotate part (Rotate Tool)")
+print("T Key - Toggle anchor/unanchor")
+print("Delete Key - Delete selected part")
+print("Escape - Deselect part")
