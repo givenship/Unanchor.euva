@@ -1,7 +1,7 @@
 -- Auto Defuse Script
 -- Upload this to GitHub and use the raw link
 
-print("fuck efn")
+print("conversation")
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -23,6 +23,7 @@ local DEFUSE_ANIMATION_IDS = {
 }
 
 local detectionCircles = {} -- Store circles for each character
+local monitoredCharacters = {} -- Track all characters
 
 -- Check if animation ID matches defuse animations
 local function isDefuseAnimation(numericId)
@@ -106,8 +107,28 @@ local function removeDetectionCircle(character)
     end
 end
 
--- Update circle colors and position
+-- Update circle colors and position for all characters
 local function updateCircles()
+    -- Create circles for all monitored characters if ShowCircle is enabled
+    if AutoDefuseSettings.ShowCircle then
+        for character, _ in pairs(monitoredCharacters) do
+            if character and character.Parent then
+                if not detectionCircles[character] then
+                    createDetectionCircle(character)
+                end
+            end
+        end
+    else
+        -- Remove all circles if ShowCircle is disabled
+        for character, parts in pairs(detectionCircles) do
+            for _, part in pairs(parts) do
+                part:Destroy()
+            end
+            detectionCircles[character] = nil
+        end
+    end
+    
+    -- Update existing circles
     for character, parts in pairs(detectionCircles) do
         if character and character.Parent then
             local distance = getDistance(character)
@@ -148,6 +169,7 @@ local function updateCircles()
                 if part then part:Destroy() end
             end
             detectionCircles[character] = nil
+            monitoredCharacters[character] = nil
         end
     end
 end
@@ -155,6 +177,9 @@ end
 -- Hook a character's animator
 local function hookCharacter(character)
     if not AutoDefuseSettings.Enabled then return end
+    
+    -- Add to monitored characters
+    monitoredCharacters[character] = true
     
     local humanoid = character:WaitForChild("Humanoid", 5)
     if not humanoid then return end
@@ -178,11 +203,6 @@ local function hookCharacter(character)
         
         -- Check if it's a defuse animation
         if isDefuseAnimation(numericId) then
-            -- Create circle for this character if ShowCircle is enabled
-            if AutoDefuseSettings.ShowCircle then
-                createDetectionCircle(character)
-            end
-            
             -- Check distance
             local radius = AutoDefuseSettings.DetectionRadius or 30
             local distance = getDistance(character)
@@ -204,20 +224,8 @@ local function hookCharacter(character)
                 VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
                 
                 print("Defused! (Clicked)")
-                
-                -- Remove circle after 2 seconds
-                if AutoDefuseSettings.ShowCircle then
-                    task.wait(2)
-                    removeDetectionCircle(character)
-                end
             else
                 print("Too far away:", math.floor(distance), "studs (need ≤" .. radius .. ")")
-                
-                -- Remove circle after 2 seconds
-                if AutoDefuseSettings.ShowCircle then
-                    task.wait(2)
-                    removeDetectionCircle(character)
-                end
             end
         end
     end)
@@ -257,9 +265,15 @@ local function startMonitoring()
         end
     end)
     
+    -- Clean up removed characters
+    characters.ChildRemoved:Connect(function(character)
+        monitoredCharacters[character] = nil
+        removeDetectionCircle(character)
+    end)
+    
     -- Update circles every frame
     circleUpdateConnection = RunService.Heartbeat:Connect(function()
-        if AutoDefuseSettings.Enabled and AutoDefuseSettings.ShowCircle then
+        if AutoDefuseSettings.Enabled then
             updateCircles()
         end
     end)
@@ -284,6 +298,7 @@ local function stopMonitoring()
         end
     end
     detectionCircles = {}
+    monitoredCharacters = {}
 end
 
 -- Export control functions
