@@ -11,7 +11,7 @@ local ModuleURLs = {
     Combat = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/combat-module.lua",
     Player = "https://raw.githubusercontent.com/https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Player",
     Misc = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/misc-module.lua",
-    Settings = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/settings-module.lua"
+    Settings = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Settings"
 }
 
 -- Destroy existing GUI if it exists
