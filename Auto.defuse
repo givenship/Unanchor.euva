@@ -1,6 +1,8 @@
 -- Auto Defuse Script
 -- Upload this to GitHub and use the raw link
 
+Print("kys")
+
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local VirtualInputManager = game:GetService("VirtualInputManager")
