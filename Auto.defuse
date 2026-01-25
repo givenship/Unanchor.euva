@@ -1,11 +1,8 @@
 -- Auto Defuse Script
 -- Upload this to GitHub and use the raw link
 
-print("conversation")
-
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
@@ -24,6 +21,14 @@ local DEFUSE_ANIMATION_IDS = {
 
 local detectionCircles = {} -- Store circles for each character
 local monitoredCharacters = {} -- Track all characters
+local checkedAnimations = {} -- Track animations we've already detected
+
+-- Check if character is in Monsters team
+local function isMonstersTeam(character)
+    local player = Players:GetPlayerFromCharacter(character)
+    if not player or not player.Team then return false end
+    return player.Team.Name == "Monsters"
+end
 
 -- Check if animation ID matches defuse animations
 local function isDefuseAnimation(numericId)
@@ -109,12 +114,18 @@ end
 
 -- Update circle colors and position for all characters
 local function updateCircles()
-    -- Create circles for all monitored characters if ShowCircle is enabled
+    -- Create circles for Monsters team characters if ShowCircle is enabled
     if AutoDefuseSettings.ShowCircle then
         for character, _ in pairs(monitoredCharacters) do
             if character and character.Parent then
-                if not detectionCircles[character] then
-                    createDetectionCircle(character)
+                -- Only show circle for Monsters team
+                if isMonstersTeam(character) then
+                    if not detectionCircles[character] then
+                        createDetectionCircle(character)
+                    end
+                else
+                    -- Remove circle if not Monsters team
+                    removeDetectionCircle(character)
                 end
             end
         end
@@ -174,67 +185,89 @@ local function updateCircles()
     end
 end
 
--- Hook a character's animator
+-- Check for playing animations every 0.01 seconds
+local function checkAnimations()
+    for character, _ in pairs(monitoredCharacters) do
+        if character and character.Parent then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                local animator = humanoid:FindFirstChildOfClass("Animator")
+                if animator then
+                    local success, tracks = pcall(function()
+                        return animator:GetPlayingAnimationTracks()
+                    end)
+                    
+                    if success and tracks then
+                        for _, track in pairs(tracks) do
+                            if track.IsPlaying and track.Animation then
+                                local animId = track.Animation.AnimationId
+                                local numericId = animId:match("%d+")
+                                
+                                if numericId and isDefuseAnimation(numericId) then
+                                    -- Create unique key to prevent duplicate detections
+                                    local checkKey = character.Name .. "_" .. numericId .. "_" .. math.floor(track.TimePosition * 10)
+                                    
+                                    if not checkedAnimations[checkKey] then
+                                        checkedAnimations[checkKey] = true
+                                        
+                                        print("Animation detected:", numericId, "from", character.Name)
+                                        
+                                        -- Check distance
+                                        local radius = AutoDefuseSettings.DetectionRadius or 30
+                                        local distance = getDistance(character)
+                                        
+                                        if distance <= radius then
+                                            print("DEFUSE ANIMATION DETECTED!")
+                                            print("Character:", character.Name)
+                                            print("Distance:", math.floor(distance), "studs")
+                                            
+                                            local delayMs = AutoDefuseSettings.Delay or 3000
+                                            print("Waiting", delayMs, "ms...")
+                                            
+                                            -- Wait for delay (convert ms to seconds)
+                                            task.spawn(function()
+                                                task.wait(delayMs / 1000)
+                                                
+                                                -- Send left click
+                                                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                                                task.wait(0.05)
+                                                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+                                                
+                                                print("Defused! (Clicked)")
+                                                
+                                                -- Clean up check key after 2 seconds
+                                                task.wait(2)
+                                                checkedAnimations[checkKey] = nil
+                                            end)
+                                        else
+                                            print("Too far away:", math.floor(distance), "studs (need ≤" .. radius .. ")")
+                                            -- Clean up check key
+                                            task.wait(1)
+                                            checkedAnimations[checkKey] = nil
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Hook a character (add to monitored list)
 local function hookCharacter(character)
     if not AutoDefuseSettings.Enabled then return end
     
     -- Add to monitored characters
     monitoredCharacters[character] = true
     
-    local humanoid = character:WaitForChild("Humanoid", 5)
-    if not humanoid then return end
-
-    local animator = humanoid:FindFirstChildOfClass("Animator")
-    if not animator then
-        animator = Instance.new("Animator", humanoid)
-    end
-
-    animator.AnimationPlayed:Connect(function(track)
-        if not AutoDefuseSettings.Enabled then return end
-        
-        local anim = track.Animation
-        if not anim then return end
-
-        local id = anim.AnimationId
-        local numericId = id:match("%d+")
-        if not numericId then return end
-
-        print("Animation detected:", numericId, "from", character.Name)
-        
-        -- Check if it's a defuse animation
-        if isDefuseAnimation(numericId) then
-            -- Check distance
-            local radius = AutoDefuseSettings.DetectionRadius or 30
-            local distance = getDistance(character)
-            
-            if distance <= radius then
-                print("DEFUSE ANIMATION DETECTED!")
-                print("Character:", character.Name)
-                print("Distance:", math.floor(distance), "studs")
-                
-                local delayMs = AutoDefuseSettings.Delay or 3000
-                print("Waiting", delayMs, "ms...")
-                
-                -- Wait for delay (convert ms to seconds)
-                task.wait(delayMs / 1000)
-                
-                -- Send left click
-                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                task.wait(0.05)
-                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-                
-                print("Defused! (Clicked)")
-            else
-                print("Too far away:", math.floor(distance), "studs (need ≤" .. radius .. ")")
-            end
-        end
-    end)
-    
-    print("Hooked character:", character.Name)
+    print("Monitoring character:", character.Name)
 end
 
 -- Start monitoring
-local circleUpdateConnection = nil
+local updateLoop = nil
 
 local function startMonitoring()
     local characters = Workspace:FindFirstChild("Characters")
@@ -271,24 +304,27 @@ local function startMonitoring()
         removeDetectionCircle(character)
     end)
     
-    -- Update circles every frame
-    circleUpdateConnection = RunService.Heartbeat:Connect(function()
-        if AutoDefuseSettings.Enabled then
-            updateCircles()
+    -- Main loop - check every 0.01 seconds
+    updateLoop = task.spawn(function()
+        while AutoDefuseSettings.Enabled do
+            pcall(updateCircles)
+            pcall(checkAnimations)
+            task.wait(0.01) -- 0.01 second interval
         end
     end)
     
-    print("Auto Defuse enabled - Event-based detection")
+    print("Auto Defuse enabled - Checking every 0.01 seconds")
     print("Target IDs:", table.concat(DEFUSE_ANIMATION_IDS, ", "))
     print("Detection Radius:", AutoDefuseSettings.DetectionRadius or 30, "studs")
     print("Delay:", AutoDefuseSettings.Delay or 3000, "ms")
     print("Show Circle:", AutoDefuseSettings.ShowCircle and "Yes" or "No")
+    print("Filter: Monsters team only")
 end
 
 local function stopMonitoring()
-    if circleUpdateConnection then
-        circleUpdateConnection:Disconnect()
-        circleUpdateConnection = nil
+    if updateLoop then
+        task.cancel(updateLoop)
+        updateLoop = nil
     end
     
     -- Remove all circles
@@ -299,6 +335,7 @@ local function stopMonitoring()
     end
     detectionCircles = {}
     monitoredCharacters = {}
+    checkedAnimations = {}
 end
 
 -- Export control functions
