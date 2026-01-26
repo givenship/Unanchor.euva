@@ -295,7 +295,11 @@ function MiscModule.CreateUI(parent)
     title.Parent = miscContent
     yPos = yPos + 40
     
-    local moveToolBtn, newPos = createButton("Move Tool", yPos, Color3.fromRGB(100, 100, 100), function()
+    -- Declare buttons first
+    local moveToolBtn
+    local rotateToolBtn
+    
+    moveToolBtn, yPos = createButton("Move Tool", yPos, Color3.fromRGB(100, 100, 100), function()
         moveToolEnabled = not moveToolEnabled
         moveMode = "move"
         
@@ -339,9 +343,8 @@ function MiscModule.CreateUI(parent)
             deselectPart()
         end
     end)
-    yPos = newPos
     
-    local rotateToolBtn, newPos = createButton("Rotate Tool", yPos, Color3.fromRGB(100, 100, 100), function()
+    rotateToolBtn, yPos = createButton("Rotate Tool", yPos, Color3.fromRGB(100, 100, 100), function()
         moveToolEnabled = not moveToolEnabled
         moveMode = "rotate"
         
@@ -385,9 +388,8 @@ function MiscModule.CreateUI(parent)
             deselectPart()
         end
     end)
-    yPos = newPos
     
-    local resetBtn, newPos = createButton("Reset Rotation", yPos, Color3.fromRGB(80, 80, 80), function()
+    local resetBtn, yPos = createButton("Reset Rotation", yPos, Color3.fromRGB(80, 80, 80), function()
         if selectedPart and #selectedConnectedParts > 0 then
             for _, connectedPart in ipairs(selectedConnectedParts) do
                 if connectedPart and connectedPart.Parent then
@@ -399,9 +401,8 @@ function MiscModule.CreateUI(parent)
             end
         end
     end)
-    yPos = newPos
     
-    local clearBtn, newPos = createButton("Clear All Forces", yPos, Color3.fromRGB(60, 60, 60), function()
+    local clearBtn, yPos = createButton("Clear All Forces", yPos, Color3.fromRGB(60, 60, 60), function()
         for _, part in ipairs(game.Workspace:GetDescendants()) do
             if part:IsA("BasePart") then
                 for _, child in ipairs(part:GetChildren()) do
@@ -413,7 +414,6 @@ function MiscModule.CreateUI(parent)
         end
         deselectPart()
     end)
-    yPos = newPos
     
     miscContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
