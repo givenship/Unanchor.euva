@@ -1,27 +1,21 @@
 -- Misc Module
--- Part Controller with Move/Rotate tools from provided script
+-- Part Controller (extracted from working script)
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
 
 local MiscModule = {}
 
--- Settings
-getgenv().MiscSettings = {
-    PartControllerEnabled = false
-}
-
--- Part controller variables
+-- Part Controller Variables
 local moveToolEnabled = false
 local selectedPart = nil
 local selectionBox = nil
 local handles = nil
 local arcHandles = nil
 local selectedConnectedParts = {}
-local moveMode = "move" -- "move" or "rotate"
+local moveMode = "move"
 
 -- Helper Functions
 local function isBodyPart(part)
@@ -115,7 +109,7 @@ local function createSelectionBox(part)
             Enum.NormalId.Front,
             Enum.NormalId.Back
         )
-        handles.Parent = LocalPlayer.PlayerGui
+        handles.Parent = player.PlayerGui
     elseif moveMode == "rotate" then
         arcHandles = Instance.new("ArcHandles")
         arcHandles.Adornee = part
@@ -125,7 +119,7 @@ local function createSelectionBox(part)
             Enum.Axis.Y,
             Enum.Axis.Z
         )
-        arcHandles.Parent = LocalPlayer.PlayerGui
+        arcHandles.Parent = player.PlayerGui
     end
     
     for _, connectedPart in ipairs(connectedParts) do
@@ -250,10 +244,8 @@ end
 
 local function selectPart(part)
     if selectedPart == part then return end
-    
     selectedPart = part
     createSelectionBox(part)
-    print("Selected:", part.Name, "| Connected parts:", #selectedConnectedParts)
 end
 
 local function deselectPart()
@@ -261,85 +253,9 @@ local function deselectPart()
     removeSelectionBox()
 end
 
--- Get mouse target (unanchored parts only)
-local function getMouseTarget()
-    local mouse = LocalPlayer:GetMouse()
-    local target = mouse.Target
-    
-    if target and (target:IsA("BasePart") or target:IsA("UnionOperation")) and not target.Anchored then
-        -- Exclude character parts
-        local isPlayerPart = false
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr.Character and target:IsDescendantOf(plr.Character) then
-                isPlayerPart = true
-                break
-            end
-        end
-        
-        if not isPlayerPart and not isBodyPart(target) then
-            return target
-        end
-    end
-    
-    return nil
-end
-
--- Start/Stop Part Controller
+-- Mouse and Keyboard
 local mouseConnection
 local keyConnection
-
-local function startPartController()
-    if mouseConnection then return end
-    
-    print("Part Controller enabled")
-    print("Click unanchored parts to select")
-    
-    local mouse = LocalPlayer:GetMouse()
-    
-    mouseConnection = mouse.Button1Down:Connect(function()
-        if not moveToolEnabled then return end
-        
-        local target = getMouseTarget()
-        if target then
-            selectPart(target)
-        end
-    end)
-    
-    keyConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if not moveToolEnabled then return end
-        
-        if input.KeyCode == Enum.KeyCode.Delete and selectedPart and selectedPart.Parent then
-            print("Deleting:", selectedPart.Name)
-            selectedPart:Destroy()
-            deselectPart()
-        elseif input.KeyCode == Enum.KeyCode.Escape and selectedPart then
-            deselectPart()
-            print("Part deselected")
-        elseif input.KeyCode == Enum.KeyCode.T and selectedPart then
-            selectedPart.Anchored = not selectedPart.Anchored
-            print(selectedPart.Name, selectedPart.Anchored and "ANCHORED" or "UNANCHORED")
-            if selectedPart.Anchored then
-                deselectPart()
-            end
-        end
-    end)
-end
-
-local function stopPartController()
-    if mouseConnection then
-        mouseConnection:Disconnect()
-        mouseConnection = nil
-    end
-    
-    if keyConnection then
-        keyConnection:Disconnect()
-        keyConnection = nil
-    end
-    
-    deselectPart()
-    print("Part Controller disabled")
-end
 
 function MiscModule.CreateUI(parent)
     local miscContent = Instance.new("ScrollingFrame")
@@ -351,7 +267,6 @@ function MiscModule.CreateUI(parent)
     
     local yPos = 10
     
-    -- Helper function to create regular button
     local function createButton(name, position, color, callback)
         local button = Instance.new("TextButton")
         button.Size = UDim2.new(1, -20, 0, 35)
@@ -364,29 +279,22 @@ function MiscModule.CreateUI(parent)
         button.TextColor3 = Color3.fromRGB(255, 255, 255)
         button.Parent = miscContent
         
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 6)
-        corner.Parent = button
-        
         button.MouseButton1Click:Connect(callback)
-        
         return button, position + 45
     end
     
-    -- PART CONTROLLER Section
-    local controllerTitle = Instance.new("TextLabel")
-    controllerTitle.Size = UDim2.new(1, -20, 0, 30)
-    controllerTitle.Position = UDim2.new(0, 10, 0, yPos)
-    controllerTitle.BackgroundTransparency = 1
-    controllerTitle.Text = "PART CONTROLLER"
-    controllerTitle.Font = Enum.Font.GothamBlack
-    controllerTitle.TextSize = 16
-    controllerTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    controllerTitle.TextXAlignment = Enum.TextXAlignment.Left
-    controllerTitle.Parent = miscContent
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -20, 0, 30)
+    title.Position = UDim2.new(0, 10, 0, yPos)
+    title.BackgroundTransparency = 1
+    title.Text = "PART CONTROLLER"
+    title.Font = Enum.Font.GothamBlack
+    title.TextSize = 16
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = miscContent
     yPos = yPos + 40
     
-    -- Move Tool Button
     local moveToolBtn, newPos = createButton("Move Tool", yPos, Color3.fromRGB(100, 100, 100), function()
         moveToolEnabled = not moveToolEnabled
         moveMode = "move"
@@ -394,18 +302,45 @@ function MiscModule.CreateUI(parent)
         if moveToolEnabled then
             moveToolBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 220)
             rotateToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-            startPartController()
-            if selectedPart and selectedPart.Parent then
-                createSelectionBox(selectedPart)
-            end
+            
+            mouseConnection = mouse.Button1Down:Connect(function()
+                if not moveToolEnabled then return end
+                local target = mouse.Target
+                if target and (target:IsA("BasePart") or target:IsA("UnionOperation")) then
+                    local isPlayerPart = false
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                        if plr.Character and target:IsDescendantOf(plr.Character) then
+                            isPlayerPart = true
+                            break
+                        end
+                    end
+                    if target.Anchored == false and not isPlayerPart and not isBodyPart(target) then
+                        selectPart(target)
+                    end
+                end
+            end)
+            
+            keyConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if gameProcessed then return end
+                if not moveToolEnabled then return end
+                if input.KeyCode == Enum.KeyCode.Delete and selectedPart and selectedPart.Parent then
+                    selectedPart:Destroy()
+                    deselectPart()
+                elseif input.KeyCode == Enum.KeyCode.Escape and selectedPart then
+                    deselectPart()
+                end
+            end)
+            
+            if selectedPart then createSelectionBox(selectedPart) end
         else
             moveToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-            stopPartController()
+            if mouseConnection then mouseConnection:Disconnect() end
+            if keyConnection then keyConnection:Disconnect() end
+            deselectPart()
         end
     end)
     yPos = newPos
     
-    -- Rotate Tool Button
     local rotateToolBtn, newPos = createButton("Rotate Tool", yPos, Color3.fromRGB(100, 100, 100), function()
         moveToolEnabled = not moveToolEnabled
         moveMode = "rotate"
@@ -413,20 +348,47 @@ function MiscModule.CreateUI(parent)
         if moveToolEnabled then
             rotateToolBtn.BackgroundColor3 = Color3.fromRGB(220, 100, 50)
             moveToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-            startPartController()
-            if selectedPart and selectedPart.Parent then
-                createSelectionBox(selectedPart)
-            end
+            
+            mouseConnection = mouse.Button1Down:Connect(function()
+                if not moveToolEnabled then return end
+                local target = mouse.Target
+                if target and (target:IsA("BasePart") or target:IsA("UnionOperation")) then
+                    local isPlayerPart = false
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                        if plr.Character and target:IsDescendantOf(plr.Character) then
+                            isPlayerPart = true
+                            break
+                        end
+                    end
+                    if target.Anchored == false and not isPlayerPart and not isBodyPart(target) then
+                        selectPart(target)
+                    end
+                end
+            end)
+            
+            keyConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if gameProcessed then return end
+                if not moveToolEnabled then return end
+                if input.KeyCode == Enum.KeyCode.Delete and selectedPart and selectedPart.Parent then
+                    selectedPart:Destroy()
+                    deselectPart()
+                elseif input.KeyCode == Enum.KeyCode.Escape and selectedPart then
+                    deselectPart()
+                end
+            end)
+            
+            if selectedPart then createSelectionBox(selectedPart) end
         else
             rotateToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-            stopPartController()
+            if mouseConnection then mouseConnection:Disconnect() end
+            if keyConnection then keyConnection:Disconnect() end
+            deselectPart()
         end
     end)
     yPos = newPos
     
-    -- Reset Rotation Button
-    local resetRotBtn, newPos = createButton("Reset Rotation", yPos, Color3.fromRGB(80, 80, 80), function()
-        if selectedPart and selectedPart.Parent and #selectedConnectedParts > 0 then
+    local resetBtn, newPos = createButton("Reset Rotation", yPos, Color3.fromRGB(80, 80, 80), function()
+        if selectedPart and #selectedConnectedParts > 0 then
             for _, connectedPart in ipairs(selectedConnectedParts) do
                 if connectedPart and connectedPart.Parent then
                     local bg = connectedPart:FindFirstChild("MoveToolGyro")
@@ -435,16 +397,12 @@ function MiscModule.CreateUI(parent)
                     end
                 end
             end
-            print("Rotation reset")
-        else
-            warn("No part selected")
         end
     end)
     yPos = newPos
     
-    -- Clear All Forces Button
     local clearBtn, newPos = createButton("Clear All Forces", yPos, Color3.fromRGB(60, 60, 60), function()
-        for _, part in ipairs(Workspace:GetDescendants()) do
+        for _, part in ipairs(game.Workspace:GetDescendants()) do
             if part:IsA("BasePart") then
                 for _, child in ipairs(part:GetChildren()) do
                     if child.Name == "MoveToolPosition" or child.Name == "MoveToolGyro" then
@@ -454,51 +412,15 @@ function MiscModule.CreateUI(parent)
             end
         end
         deselectPart()
-        print("All forces cleared")
     end)
     yPos = newPos
-    
-    yPos = yPos + 10
-    
-    -- Controls info
-    local controlsTitle = Instance.new("TextLabel")
-    controlsTitle.Size = UDim2.new(1, -20, 0, 25)
-    controlsTitle.Position = UDim2.new(0, 10, 0, yPos)
-    controlsTitle.BackgroundTransparency = 1
-    controlsTitle.Text = "CONTROLS:"
-    controlsTitle.Font = Enum.Font.GothamBold
-    controlsTitle.TextSize = 12
-    controlsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    controlsTitle.TextXAlignment = Enum.TextXAlignment.Left
-    controlsTitle.Parent = miscContent
-    yPos = yPos + 30
-    
-    local controlsInfo = Instance.new("TextLabel")
-    controlsInfo.Size = UDim2.new(1, -20, 0, 110)
-    controlsInfo.Position = UDim2.new(0, 10, 0, yPos)
-    controlsInfo.BackgroundTransparency = 1
-    controlsInfo.Text = [[Click unanchored part to select
-Drag arrows to move (Move Tool)
-Drag circles to rotate (Rotate Tool)
-T = Toggle anchor/unanchor
-Delete = Delete part
-Escape = Deselect part
-
-Handles connected parts automatically]]
-    controlsInfo.Font = Enum.Font.Gotham
-    controlsInfo.TextSize = 11
-    controlsInfo.TextColor3 = Color3.fromRGB(200, 200, 200)
-    controlsInfo.TextXAlignment = Enum.TextXAlignment.Left
-    controlsInfo.TextYAlignment = Enum.TextYAlignment.Top
-    controlsInfo.TextWrapped = true
-    controlsInfo.Parent = miscContent
-    yPos = yPos + 120
     
     miscContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
 
 function MiscModule.Cleanup()
-    stopPartController()
+    if mouseConnection then mouseConnection:Disconnect() end
+    if keyConnection then keyConnection:Disconnect() end
     deselectPart()
 end
 
