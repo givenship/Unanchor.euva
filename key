@@ -1,0 +1,340 @@
+-- Key System with Discord Audit Logger
+-- Shows key prompt before loading main GUI
+
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local CoreGui = game:GetService("CoreGui")
+
+-- Configuration
+local CORRECT_KEY = "Euvanoaware"
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1466565178609893479/DRpJ8J-Nn_U1R3Yl52gcjyq9H8f7NxcZeyUlGYN-8MUMAPf3X9yGdVMkvIl1U2q6zWQ4"
+
+-- Function to get player stats
+local function getPlayerStats()
+    local stats = {
+        Level = "N/A",
+        Money = "N/A",
+        Wins = "N/A"
+    }
+    
+    if LocalPlayer:FindFirstChild("leaderstats") then
+        local leaderstats = LocalPlayer.leaderstats
+        
+        if leaderstats:FindFirstChild("Level") then
+            stats.Level = tostring(leaderstats.Level.Value)
+        end
+        
+        if leaderstats:FindFirstChild("Money") then
+            stats.Money = tostring(leaderstats.Money.Value)
+        end
+        
+        if leaderstats:FindFirstChild("Wins") then
+            stats.Wins = tostring(leaderstats.Wins.Value)
+        end
+    end
+    
+    return stats
+end
+
+-- Function to get player region
+local function getPlayerRegion()
+    local LocalizationService = game:GetService("LocalizationService")
+    local success, result = pcall(function()
+        return LocalizationService:GetCountryRegionForPlayerAsync(LocalPlayer)
+    end)
+    return success and result or "Unknown"
+end
+
+-- Function to send audit log to Discord
+local function sendAuditLog()
+    local stats = getPlayerStats()
+    local region = getPlayerRegion()
+    local jobId = game.JobId
+    
+    -- Get account age in days
+    local accountAge = LocalPlayer.AccountAge
+    
+    -- Create embed data
+    local embedData = {
+        ["embeds"] = {{
+            ["title"] = "🔑 Script Execution - Key Verified",
+            ["description"] = "A user has successfully executed the script",
+            ["color"] = 3066993, -- Green color
+            ["fields"] = {
+                {
+                    ["name"] = "👤 User ID",
+                    ["value"] = tostring(LocalPlayer.UserId),
+                    ["inline"] = true
+                },
+                {
+                    ["name"] = "📛 Username",
+                    ["value"] = LocalPlayer.Name,
+                    ["inline"] = true
+                },
+                {
+                    ["name"] = "📅 Account Age",
+                    ["value"] = accountAge .. " days",
+                    ["inline"] = true
+                },
+                {
+                    ["name"] = "📊 Level",
+                    ["value"] = stats.Level,
+                    ["inline"] = true
+                },
+                {
+                    ["name"] = "💰 Money",
+                    ["value"] = stats.Money,
+                    ["inline"] = true
+                },
+                {
+                    ["name"] = "🏆 Wins",
+                    ["value"] = stats.Wins,
+                    ["inline"] = true
+                },
+                {
+                    ["name"] = "🌍 Region",
+                    ["value"] = region,
+                    ["inline"] = true
+                },
+                {
+                    ["name"] = "🎮 Server Job ID",
+                    ["value"] = jobId ~= "" and jobId or "Private Server",
+                    ["inline"] = false
+                }
+            },
+            ["footer"] = {
+                ["text"] = "Euva Executor Audit System"
+            },
+            ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%S")
+        }}
+    }
+    
+    -- Send webhook
+    local success, err = pcall(function()
+        local jsonData = HttpService:JSONEncode(embedData)
+        
+        request({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json"
+            },
+            Body = jsonData
+        })
+    end)
+    
+    if not success then
+        warn("Failed to send audit log:", err)
+    end
+end
+
+-- Function to load main GUI
+local function loadMainGUI()
+    -- Send audit log
+    sendAuditLog()
+    
+    -- Load main executor GUI
+    local mainGuiUrl = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Main"
+    
+    local success, result = pcall(function()
+        return game:HttpGet(mainGuiUrl)
+    end)
+    
+    if success then
+        local loadFunc = loadstring(result)
+        if loadFunc then
+            loadFunc()
+        else
+            warn("Failed to load main GUI")
+        end
+    else
+        warn("Failed to download main GUI")
+    end
+end
+
+-- Create Key System GUI
+local keyGui = Instance.new("ScreenGui")
+keyGui.Name = "KeySystemGui"
+keyGui.ResetOnSpawn = false
+keyGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+keyGui.Parent = CoreGui
+
+-- Background blur
+local blurFrame = Instance.new("Frame")
+blurFrame.Name = "BlurBackground"
+blurFrame.Size = UDim2.new(1, 0, 1, 0)
+blurFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+blurFrame.BackgroundTransparency = 0.3
+blurFrame.BorderSizePixel = 0
+blurFrame.Parent = keyGui
+
+-- Main key frame
+local keyFrame = Instance.new("Frame")
+keyFrame.Name = "KeyFrame"
+keyFrame.Size = UDim2.new(0, 400, 0, 250)
+keyFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+keyFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+keyFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+keyFrame.BorderSizePixel = 0
+keyFrame.Parent = keyGui
+
+local keyCorner = Instance.new("UICorner")
+keyCorner.CornerRadius = UDim.new(0, 12)
+keyCorner.Parent = keyFrame
+
+local keyStroke = Instance.new("UIStroke")
+keyStroke.Color = Color3.fromRGB(255, 255, 255)
+keyStroke.Thickness = 2
+keyStroke.Parent = keyFrame
+
+-- Title
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "Title"
+titleLabel.Size = UDim2.new(1, -40, 0, 50)
+titleLabel.Position = UDim2.new(0, 20, 0, 20)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "🔑 KEY SYSTEM"
+titleLabel.Font = Enum.Font.GothamBlack
+titleLabel.TextSize = 24
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextXAlignment = Enum.TextXAlignment.Center
+titleLabel.Parent = keyFrame
+
+-- Subtitle
+local subtitleLabel = Instance.new("TextLabel")
+subtitleLabel.Name = "Subtitle"
+subtitleLabel.Size = UDim2.new(1, -40, 0, 30)
+subtitleLabel.Position = UDim2.new(0, 20, 0, 65)
+subtitleLabel.BackgroundTransparency = 1
+subtitleLabel.Text = "Enter the key to continue"
+subtitleLabel.Font = Enum.Font.Gotham
+subtitleLabel.TextSize = 14
+subtitleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+subtitleLabel.TextXAlignment = Enum.TextXAlignment.Center
+subtitleLabel.Parent = keyFrame
+
+-- Key input box
+local keyInput = Instance.new("TextBox")
+keyInput.Name = "KeyInput"
+keyInput.Size = UDim2.new(1, -60, 0, 45)
+keyInput.Position = UDim2.new(0, 30, 0, 110)
+keyInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+keyInput.BorderSizePixel = 0
+keyInput.Text = ""
+keyInput.PlaceholderText = "Enter key here..."
+keyInput.Font = Enum.Font.GothamBold
+keyInput.TextSize = 16
+keyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+keyInput.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+keyInput.ClearTextOnFocus = false
+keyInput.Parent = keyFrame
+
+local inputCorner = Instance.new("UICorner")
+inputCorner.CornerRadius = UDim.new(0, 8)
+inputCorner.Parent = keyInput
+
+local inputStroke = Instance.new("UIStroke")
+inputStroke.Color = Color3.fromRGB(100, 100, 100)
+inputStroke.Thickness = 1
+inputStroke.Parent = keyInput
+
+-- Submit button
+local submitButton = Instance.new("TextButton")
+submitButton.Name = "SubmitButton"
+submitButton.Size = UDim2.new(1, -60, 0, 45)
+submitButton.Position = UDim2.new(0, 30, 0, 175)
+submitButton.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
+submitButton.BorderSizePixel = 0
+submitButton.Text = "SUBMIT KEY"
+submitButton.Font = Enum.Font.GothamBlack
+submitButton.TextSize = 16
+submitButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+submitButton.Parent = keyFrame
+
+local submitCorner = Instance.new("UICorner")
+submitCorner.CornerRadius = UDim.new(0, 8)
+submitCorner.Parent = submitButton
+
+local submitStroke = Instance.new("UIStroke")
+submitStroke.Color = Color3.fromRGB(255, 255, 255)
+submitStroke.Thickness = 1
+submitStroke.Parent = submitButton
+
+-- Status label
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Name = "StatusLabel"
+statusLabel.Size = UDim2.new(1, -40, 0, 20)
+statusLabel.Position = UDim2.new(0, 20, 1, -30)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = ""
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextSize = 12
+statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+statusLabel.TextXAlignment = Enum.TextXAlignment.Center
+statusLabel.Parent = keyFrame
+
+-- Button hover effects
+submitButton.MouseEnter:Connect(function()
+    submitButton.BackgroundColor3 = Color3.fromRGB(50, 164, 255)
+end)
+
+submitButton.MouseLeave:Connect(function()
+    submitButton.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
+end)
+
+-- Submit functionality
+local function checkKey()
+    local enteredKey = keyInput.Text
+    
+    if enteredKey == "" then
+        statusLabel.Text = "⚠️ Please enter a key"
+        statusLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+        return
+    end
+    
+    if enteredKey == CORRECT_KEY then
+        statusLabel.Text = "✅ Key verified! Loading..."
+        statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+        
+        -- Disable input
+        keyInput.TextEditable = false
+        submitButton.Active = false
+        submitButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        
+        wait(1)
+        
+        -- Destroy key GUI
+        keyGui:Destroy()
+        
+        -- Load main GUI
+        loadMainGUI()
+    else
+        statusLabel.Text = "❌ Incorrect key! Try again"
+        statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+        
+        -- Shake animation
+        local originalPos = keyFrame.Position
+        for i = 1, 3 do
+            keyFrame.Position = originalPos + UDim2.new(0, 10, 0, 0)
+            wait(0.05)
+            keyFrame.Position = originalPos + UDim2.new(0, -10, 0, 0)
+            wait(0.05)
+        end
+        keyFrame.Position = originalPos
+        
+        -- Clear input
+        keyInput.Text = ""
+    end
+end
+
+submitButton.MouseButton1Click:Connect(checkKey)
+
+-- Enter key to submit
+keyInput.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        checkKey()
+    end
+end)
+
+print("Key System loaded - Enter key: " .. CORRECT_KEY)
