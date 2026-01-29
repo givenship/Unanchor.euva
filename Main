@@ -125,27 +125,6 @@ local closeButton = Instance.new("TextButton")
 closeButton.Name = "CloseButton"
 closeButton.Size = UDim2.new(0, 40, 0, 40)
 closeButton.Position = UDim2.new(1, -45, 0, 5)
-closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-closeButton.BorderSizePixel = 0
-closeButton.Text = "×"
-closeButton.Font = Enum.Font.GothamBold
-closeButton.TextSize = 28
-closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeButton.Parent = mainFrame
-
-local closeStroke = Instance.new("UIStroke")
-closeStroke.Color = Color3.fromRGB(255, 255, 255)
-closeStroke.Thickness = 1
-closeStroke.Parent = closeButton
-
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 4)
-closeCorner.Parent = closeButton
-
-local closeButton = Instance.new("TextButton")
-closeButton.Name = "CloseButton"
-closeButton.Size = UDim2.new(0, 40, 0, 40)
-closeButton.Position = UDim2.new(1, -45, 0, 5)
 closeButton.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
 closeButton.BackgroundTransparency = 0
 closeButton.BorderSizePixel = 0
@@ -160,6 +139,10 @@ closeStroke.Color = Color3.fromRGB(255, 255, 255)
 closeStroke.Thickness = 1
 closeStroke.Transparency = 0
 closeStroke.Parent = closeButton
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 4)
+closeCorner.Parent = closeButton
 
 local sidebar = Instance.new("Frame")
 sidebar.Name = "Sidebar"
@@ -365,13 +348,13 @@ minimizeButton.MouseButton1Click:Connect(function()
         -- Hide everything except header
         mainFrame.Size = UDim2.new(0, 700, 0, 50)
         sidebar.Visible = false
-        contentFrame.Visible = false
+        contentArea.Visible = false
         minimizeButton.Text = "□"
     else
         -- Show everything
         mainFrame.Size = UDim2.new(0, 700, 0, 450)
         sidebar.Visible = true
-        contentFrame.Visible = true
+        contentArea.Visible = true
         minimizeButton.Text = "−"
     end
 end)
@@ -415,3 +398,5 @@ end)
 closeButton.MouseLeave:Connect(function()
     closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 end)
+
+print("Executor GUI loaded successfully!")
