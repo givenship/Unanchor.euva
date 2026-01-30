@@ -1,5 +1,5 @@
 -- RPM Tool Module
--- Spins parts at adjustable RPM with axis selection
+-- Spins selected parts at adjustable RPM with axis selection
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -13,74 +13,60 @@ local spinAxis = "Vertical" -- "Vertical" or "Horizontal"
 local spinParts = {}
 local spinUpdateConnection = nil
 
--- Helper Functions
-local function isBodyPart(part)
-    local bodyPartNames = {"Torso", "Head", "Right Arm", "Left Arm", "Right Leg", "Left Leg", "HumanoidRootPart"}
-    for _, name in ipairs(bodyPartNames) do
-        if part.Name == name then
-            return true
+-- Reference to get selected parts from other tools
+local getSelectedPartsFn = nil
+
+local function applySpinToSelectedParts()
+    -- Clear existing spin parts
+    for _, data in ipairs(spinParts) do
+        if data.part and data.part.Parent and data.bav and data.bav.Parent then
+            data.bav:Destroy()
         end
     end
-    return false
-end
-
-local function collectUnanchoredParts()
-    local parts = {}
-    for _, part in ipairs(workspace:GetDescendants()) do
-        if (part:IsA("BasePart") or part:IsA("UnionOperation")) and not part.Anchored and not isBodyPart(part) then
-            local isPlayerPart = false
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr.Character and part:IsDescendantOf(plr.Character) then
-                    isPlayerPart = true
-                    break
-                end
-            end
-            if not isPlayerPart then
-                table.insert(parts, part)
-            end
-        end
-    end
-    return parts
-end
-
-local function applySpinToAllParts()
-    local unanchoredParts = collectUnanchoredParts()
-    if #unanchoredParts == 0 then
-        return
-    end
-    
     spinParts = {}
     
-    for _, part in ipairs(unanchoredParts) do
-        -- Remove existing BodyAngularVelocity
-        for _, child in ipairs(part:GetChildren()) do
-            if child:IsA("BodyAngularVelocity") and child.Name == "SpinVelocity" then
-                child:Destroy()
-            end
-        end
-        
-        -- Create BodyAngularVelocity for spinning
-        local bav = Instance.new("BodyAngularVelocity")
-        bav.Name = "SpinVelocity"
-        bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        bav.AngularVelocity = Vector3.new(0, 0, 0)
-        bav.P = 10000
-        bav.Parent = part
-        
-        table.insert(spinParts, {
-            part = part,
-            bav = bav
-        })
+    -- Get selected parts from MoveTool or RotateTool
+    local selectedParts = {}
+    if getSelectedPartsFn then
+        selectedParts = getSelectedPartsFn()
     end
+    
+    if #selectedParts == 0 then
+        warn("No parts selected. Use Move Tool or Rotate Tool to select parts first.")
+        return false
+    end
+    
+    for _, part in ipairs(selectedParts) do
+        if part and part.Parent then
+            -- Remove existing BodyAngularVelocity
+            for _, child in ipairs(part:GetChildren()) do
+                if child:IsA("BodyAngularVelocity") and child.Name == "SpinVelocity" then
+                    child:Destroy()
+                end
+            end
+            
+            -- Create BodyAngularVelocity for spinning
+            local bav = Instance.new("BodyAngularVelocity")
+            bav.Name = "SpinVelocity"
+            bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+            bav.AngularVelocity = Vector3.new(0, 0, 0)
+            bav.P = 10000
+            bav.Parent = part
+            
+            table.insert(spinParts, {
+                part = part,
+                bav = bav
+            })
+        end
+    end
+    
+    return #spinParts > 0
 end
 
 local function updateSpinVelocity()
     if not spinEnabled then return end
     
     -- Convert RPM to radians per second
-    -- RPM = revolutions per minute
-    -- 1 revolution = 2π radians
-    -- radians per second = (RPM * 2π) / 60
     local radiansPerSecond = (spinRPM * 2 * math.pi) / 60
     
     for _, data in ipairs(spinParts) do
@@ -126,9 +112,15 @@ end
 -- Public Functions
 function RPMToolModule.Enable()
     if spinEnabled then return end
+    
+    local success = applySpinToSelectedParts()
+    if not success then
+        return false
+    end
+    
     spinEnabled = true
-    applySpinToAllParts()
     startSpinUpdate()
+    return true
 end
 
 function RPMToolModule.Disable()
@@ -154,6 +146,10 @@ end
 
 function RPMToolModule.GetAxis()
     return spinAxis
+end
+
+function RPMToolModule.SetGetSelectedPartsFunction(fn)
+    getSelectedPartsFn = fn
 end
 
 return RPMToolModule
