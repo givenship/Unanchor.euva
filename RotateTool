@@ -1,1 +1,253 @@
+-- Rotate Tool Module
+-- Handles part rotation with arc handles
 
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+
+local RotateToolModule = {}
+
+-- Variables
+local rotateToolEnabled = false
+local selectedPart = nil
+local selectionBox = nil
+local arcHandles = nil
+local selectedConnectedParts = {}
+local mouseConnection = nil
+local keyConnection = nil
+
+-- Helper Functions
+local function isBodyPart(part)
+    local bodyPartNames = {"Torso", "Head", "Right Arm", "Left Arm", "Right Leg", "Left Leg", "HumanoidRootPart"}
+    for _, name in ipairs(bodyPartNames) do
+        if part.Name == name then
+            return true
+        end
+    end
+    return false
+end
+
+local function getConnectedParts(part)
+    local connectedParts = {part}
+    local checkedParts = {}
+    local partsToCheck = {part}
+    
+    while #partsToCheck > 0 do
+        local currentPart = table.remove(partsToCheck, 1)
+        if not checkedParts[currentPart] then
+            checkedParts[currentPart] = true
+            
+            for _, child in ipairs(currentPart:GetChildren()) do
+                if child:IsA("Weld") or child:IsA("WeldConstraint") or child:IsA("Motor6D") or child:IsA("ManualWeld") then
+                    local connectedPart = nil
+                    if child.Part0 == currentPart then
+                        connectedPart = child.Part1
+                    elseif child.Part1 == currentPart then
+                        connectedPart = child.Part0
+                    end
+                    
+                    if connectedPart and not checkedParts[connectedPart] then
+                        table.insert(connectedParts, connectedPart)
+                        table.insert(partsToCheck, connectedPart)
+                    end
+                end
+            end
+            
+            for _, joint in ipairs(currentPart:GetJoints()) do
+                local connectedPart = nil
+                if joint.Part0 == currentPart then
+                    connectedPart = joint.Part1
+                elseif joint.Part1 == currentPart then
+                    connectedPart = joint.Part0
+                end
+                
+                if connectedPart and not checkedParts[connectedPart] then
+                    table.insert(connectedParts, connectedPart)
+                    table.insert(partsToCheck, connectedPart)
+                end
+            end
+        end
+    end
+    
+    return connectedParts
+end
+
+local function createSelectionBox(part)
+    if selectionBox then
+        selectionBox:Destroy()
+    end
+    
+    local connectedParts = getConnectedParts(part)
+    selectedConnectedParts = connectedParts
+    
+    selectionBox = Instance.new("SelectionBox")
+    selectionBox.Adornee = part
+    selectionBox.Color3 = Color3.fromRGB(0, 170, 255)
+    selectionBox.LineThickness = 0.05
+    selectionBox.Parent = part
+    
+    if arcHandles then
+        arcHandles:Destroy()
+        arcHandles = nil
+    end
+    
+    arcHandles = Instance.new("ArcHandles")
+    arcHandles.Adornee = part
+    arcHandles.Color3 = Color3.fromRGB(255, 100, 100)
+    arcHandles.Axes = Axes.new(
+        Enum.Axis.X,
+        Enum.Axis.Y,
+        Enum.Axis.Z
+    )
+    arcHandles.Parent = player.PlayerGui
+    
+    for _, connectedPart in ipairs(connectedParts) do
+        if connectedPart and connectedPart.Parent then
+            local bodyPosition = Instance.new("BodyPosition")
+            bodyPosition.Name = "MoveToolPosition"
+            bodyPosition.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bodyPosition.Position = connectedPart.Position
+            bodyPosition.P = 100000
+            bodyPosition.D = 5000
+            bodyPosition.Parent = connectedPart
+            
+            local bodyGyro = Instance.new("BodyGyro")
+            bodyGyro.Name = "MoveToolGyro"
+            bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+            bodyGyro.CFrame = connectedPart.CFrame
+            bodyGyro.P = 100000
+            bodyGyro.D = 5000
+            bodyGyro.Parent = connectedPart
+        end
+    end
+    
+    if arcHandles then
+        arcHandles.MouseDrag:Connect(function(axis, relativeAngle)
+            if selectedPart and selectedPart.Parent and #selectedConnectedParts > 0 then
+                local rotationCFrame = CFrame.new()
+                
+                if axis == Enum.Axis.X then
+                    rotationCFrame = CFrame.Angles(relativeAngle, 0, 0)
+                elseif axis == Enum.Axis.Y then
+                    rotationCFrame = CFrame.Angles(0, relativeAngle, 0)
+                elseif axis == Enum.Axis.Z then
+                    rotationCFrame = CFrame.Angles(0, 0, relativeAngle)
+                end
+                
+                local centerPart = selectedPart
+                local centerPos = centerPart.Position
+                
+                for _, connectedPart in ipairs(selectedConnectedParts) do
+                    if connectedPart and connectedPart.Parent then
+                        local bg = connectedPart:FindFirstChild("MoveToolGyro")
+                        if bg and bg:IsA("BodyGyro") then
+                            local offset = connectedPart.Position - centerPos
+                            local rotatedOffset = rotationCFrame:VectorToWorldSpace(offset)
+                            
+                            local bp = connectedPart:FindFirstChild("MoveToolPosition")
+                            if bp then
+                                bp.Position = centerPos + rotatedOffset
+                            end
+                            
+                            bg.CFrame = bg.CFrame * rotationCFrame
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+local function removeSelectionBox()
+    if selectedPart and selectedPart.Parent then
+        for _, connectedPart in ipairs(selectedConnectedParts) do
+            if connectedPart and connectedPart.Parent then
+                local bp = connectedPart:FindFirstChild("MoveToolPosition")
+                if bp then bp:Destroy() end
+                
+                local bg = connectedPart:FindFirstChild("MoveToolGyro")
+                if bg then bg:Destroy() end
+            end
+        end
+    end
+    
+    selectedConnectedParts = {}
+    
+    if selectionBox then
+        selectionBox:Destroy()
+        selectionBox = nil
+    end
+    
+    if arcHandles then
+        arcHandles:Destroy()
+        arcHandles = nil
+    end
+end
+
+local function selectPart(part)
+    if selectedPart == part then return end
+    selectedPart = part
+    createSelectionBox(part)
+end
+
+local function deselectPart()
+    selectedPart = nil
+    removeSelectionBox()
+end
+
+function RotateToolModule.Enable()
+    if rotateToolEnabled then return end
+    rotateToolEnabled = true
+    
+    mouseConnection = mouse.Button1Down:Connect(function()
+        if not rotateToolEnabled then return end
+        local target = mouse.Target
+        if target and (target:IsA("BasePart") or target:IsA("UnionOperation")) then
+            local isPlayerPart = false
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr.Character and target:IsDescendantOf(plr.Character) then
+                    isPlayerPart = true
+                    break
+                end
+            end
+            if target.Anchored == false and not isPlayerPart and not isBodyPart(target) then
+                selectPart(target)
+            end
+        end
+    end)
+    
+    keyConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if not rotateToolEnabled then return end
+        if input.KeyCode == Enum.KeyCode.Delete and selectedPart and selectedPart.Parent then
+            selectedPart:Destroy()
+            deselectPart()
+        elseif input.KeyCode == Enum.KeyCode.Escape and selectedPart then
+            deselectPart()
+        end
+    end)
+    
+    if selectedPart then createSelectionBox(selectedPart) end
+end
+
+function RotateToolModule.Disable()
+    rotateToolEnabled = false
+    if mouseConnection then mouseConnection:Disconnect() end
+    if keyConnection then keyConnection:Disconnect() end
+    deselectPart()
+end
+
+function RotateToolModule.IsEnabled()
+    return rotateToolEnabled
+end
+
+function RotateToolModule.GetSelectedPart()
+    return selectedPart
+end
+
+function RotateToolModule.GetSelectedConnectedParts()
+    return selectedConnectedParts
+end
+
+return RotateToolModule
