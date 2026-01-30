@@ -332,12 +332,69 @@ function MiscModule.CreateUI(parent)
         end
     end)
     
-    yPos = createSlider("Spin RPM", yPos, 1, 100, 10, function(value)
+    yPos = createSlider("Spin RPM", yPos, 1, 3000, 10, function(value)
         local rpmTool = LoadedTools.RPMTool
         if rpmTool then
             rpmTool.SetRPM(value)
         end
     end)
+    
+    -- Spin Axis Selector
+    local axisLabel = Instance.new("TextLabel")
+    axisLabel.Size = UDim2.new(1, -20, 0, 25)
+    axisLabel.Position = UDim2.new(0, 10, 0, yPos)
+    axisLabel.BackgroundTransparency = 1
+    axisLabel.Text = "Spin Axis:"
+    axisLabel.Font = Enum.Font.GothamBold
+    axisLabel.TextSize = 12
+    axisLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    axisLabel.TextXAlignment = Enum.TextXAlignment.Left
+    axisLabel.Parent = miscContent
+    yPos = yPos + 30
+    
+    -- Vertical Button
+    local verticalBtn = Instance.new("TextButton")
+    verticalBtn.Size = UDim2.new(0, 135, 0, 30)
+    verticalBtn.Position = UDim2.new(0, 10, 0, yPos)
+    verticalBtn.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
+    verticalBtn.BorderSizePixel = 0
+    verticalBtn.Text = "Vertical"
+    verticalBtn.Font = Enum.Font.GothamBold
+    verticalBtn.TextSize = 12
+    verticalBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    verticalBtn.Parent = miscContent
+    
+    -- Horizontal Button
+    local horizontalBtn = Instance.new("TextButton")
+    horizontalBtn.Size = UDim2.new(0, 135, 0, 30)
+    horizontalBtn.Position = UDim2.new(0, 155, 0, yPos)
+    horizontalBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    horizontalBtn.BorderSizePixel = 0
+    horizontalBtn.Text = "Horizontal"
+    horizontalBtn.Font = Enum.Font.GothamBold
+    horizontalBtn.TextSize = 12
+    horizontalBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    horizontalBtn.Parent = miscContent
+    
+    verticalBtn.MouseButton1Click:Connect(function()
+        local rpmTool = LoadedTools.RPMTool
+        if rpmTool then
+            rpmTool.SetAxis("Vertical")
+            verticalBtn.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
+            horizontalBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        end
+    end)
+    
+    horizontalBtn.MouseButton1Click:Connect(function()
+        local rpmTool = LoadedTools.RPMTool
+        if rpmTool then
+            rpmTool.SetAxis("Horizontal")
+            horizontalBtn.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
+            verticalBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        end
+    end)
+    
+    yPos = yPos + 45
     
     miscContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
