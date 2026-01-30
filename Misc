@@ -396,6 +396,89 @@ function MiscModule.CreateUI(parent)
     
     yPos = yPos + 45
     
+    -- SAFE-NOS Section
+    local safeNosTitle = Instance.new("TextLabel")
+    safeNosTitle.Size = UDim2.new(1, -20, 0, 30)
+    safeNosTitle.Position = UDim2.new(0, 10, 0, yPos)
+    safeNosTitle.BackgroundTransparency = 1
+    safeNosTitle.Text = "SAFE-NOS"
+    safeNosTitle.Font = Enum.Font.GothamBlack
+    safeNosTitle.TextSize = 16
+    safeNosTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    safeNosTitle.TextXAlignment = Enum.TextXAlignment.Left
+    safeNosTitle.Parent = miscContent
+    yPos = yPos + 40
+    
+    local safeNosBtn, newYPos = createButton("Safe-NOS", yPos, Color3.fromRGB(100, 100, 100), function()
+        if getgenv().SafeNOSEnabled then
+            getgenv().SafeNOSEnabled = false
+            safeNosBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            safeNosBtn.Text = "Safe-NOS"
+            
+            if getgenv().SafeNOSConnection then
+                getgenv().SafeNOSConnection:Disconnect()
+                getgenv().SafeNOSConnection = nil
+            end
+        else
+            getgenv().SafeNOSEnabled = true
+            safeNosBtn.BackgroundColor3 = Color3.fromRGB(50, 255, 50)
+            safeNosBtn.Text = "Safe-NOS (ON)"
+            
+            -- Start monitoring network ownership
+            local Players = game:GetService("Players")
+            local LocalPlayer = Players.LocalPlayer
+            local RunService = game:GetService("RunService")
+            
+            getgenv().SafeNOSConnection = RunService.Heartbeat:Connect(function()
+                if not getgenv().SafeNOSEnabled then return end
+                
+                for _, part in ipairs(workspace:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        -- Check for any forces
+                        local hasForce = false
+                        for _, child in ipairs(part:GetChildren()) do
+                            if child.Name == "MoveToolPosition" or 
+                               child.Name == "MoveToolGyro" or 
+                               child.Name == "RingPosition" or 
+                               child.Name == "RingGyro" or 
+                               child.Name == "SpinVelocity" then
+                                hasForce = true
+                                
+                                -- Check network ownership
+                                local hasOwnership = part:CanSetNetworkOwnership()
+                                if hasOwnership then
+                                    local owner = part:GetNetworkOwner()
+                                    -- If we don't own it (owner is not LocalPlayer), clear forces
+                                    if owner ~= LocalPlayer then
+                                        child:Destroy()
+                                        print("Safe-NOS: Cleared force from " .. part.Name .. " (lost ownership)")
+                                    end
+                                end
+                                
+                                break
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end)
+    yPos = newYPos
+    
+    local safeNosInfo = Instance.new("TextLabel")
+    safeNosInfo.Size = UDim2.new(1, -20, 0, 40)
+    safeNosInfo.Position = UDim2.new(0, 10, 0, yPos)
+    safeNosInfo.BackgroundTransparency = 1
+    safeNosInfo.Text = "Automatically removes forces when\nyou lose network ownership"
+    safeNosInfo.Font = Enum.Font.Gotham
+    safeNosInfo.TextSize = 11
+    safeNosInfo.TextColor3 = Color3.fromRGB(200, 200, 200)
+    safeNosInfo.TextXAlignment = Enum.TextXAlignment.Left
+    safeNosInfo.TextYAlignment = Enum.TextYAlignment.Top
+    safeNosInfo.TextWrapped = true
+    safeNosInfo.Parent = miscContent
+    yPos = yPos + 50
+    
     miscContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
 
@@ -405,6 +488,13 @@ function MiscModule.Cleanup()
     if LoadedTools.RotateTool then LoadedTools.RotateTool.Disable() end
     if LoadedTools.RingShape then LoadedTools.RingShape.Disable() end
     if LoadedTools.RPMTool then LoadedTools.RPMTool.Disable() end
+    
+    -- Cleanup Safe-NOS
+    if getgenv().SafeNOSConnection then
+        getgenv().SafeNOSConnection:Disconnect()
+        getgenv().SafeNOSConnection = nil
+    end
+    getgenv().SafeNOSEnabled = false
 end
 
 return MiscModule
