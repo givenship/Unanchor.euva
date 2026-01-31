@@ -2,6 +2,8 @@
 -- Complete fresh start with unified design
 -- Color: #F8E8ED with gradient from bottom-left to top-right
 
+print("sybau")
+
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local CoreGui = game:GetService("CoreGui")
