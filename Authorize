@@ -171,7 +171,7 @@ local function sendToFirebase()
             Headers = {["Content-Type"] = "application/json"},
             Body = HttpService:JSONEncode(data)
         })
-        print("✅ Data logged to Firebase")
+        print("d)*XZ")
     end)
 end
 
