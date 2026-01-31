@@ -2,8 +2,6 @@
 -- Complete fresh start with unified design
 -- Color: #F8E8ED with gradient from bottom-left to top-right
 
-print("hello")
-
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local CoreGui = game:GetService("CoreGui")
@@ -429,6 +427,8 @@ guiTransDragCorner.CornerRadius = UDim.new(1, 0)
 guiTransDragCorner.Parent = guiTransDrag
 
 local guiTransValue = 0
+local guiTransDragging = false
+
 local function updateGUITransparency(value)
     guiTransValue = math.clamp(value, 0, 1)
     guiTransFill.Size = UDim2.new(guiTransValue, 0, 1, 0)
@@ -436,28 +436,23 @@ local function updateGUITransparency(value)
     mainFrame.BackgroundTransparency = guiTransValue * 0.7
 end
 
-guiTransDrag.InputBegan:Connect(function(input)
+guiTransDrag.MouseButton1Down:Connect(function()
+    guiTransDragging = true
+end)
+
+UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local dragging = true
-        local function update()
-            while dragging do
-                local mousePos = UserInputService:GetMouseLocation().X
-                local sliderPos = guiTransSlider.AbsolutePosition.X
-                local sliderSize = guiTransSlider.AbsoluteSize.X
-                local relative = (mousePos - sliderPos) / sliderSize
-                updateGUITransparency(relative)
-                task.wait()
-            end
-        end
-        task.spawn(update)
-        
-        local connection
-        connection = input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-                connection:Disconnect()
-            end
-        end)
+        guiTransDragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if guiTransDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local mousePos = UserInputService:GetMouseLocation().X
+        local sliderPos = guiTransSlider.AbsolutePosition.X
+        local sliderSize = guiTransSlider.AbsoluteSize.X
+        local relative = math.clamp((mousePos - sliderPos) / sliderSize, 0, 1)
+        updateGUITransparency(relative)
     end
 end)
 
@@ -502,6 +497,7 @@ decoTransDragCorner.CornerRadius = UDim.new(1, 0)
 decoTransDragCorner.Parent = decoTransDrag
 
 local decoTransValue = 0.8
+local decoTransDragging = false
 local decorationElements = {}
 
 local function updateDecoTransparency(value)
@@ -516,28 +512,23 @@ local function updateDecoTransparency(value)
     end
 end
 
-decoTransDrag.InputBegan:Connect(function(input)
+decoTransDrag.MouseButton1Down:Connect(function()
+    decoTransDragging = true
+end)
+
+UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local dragging = true
-        local function update()
-            while dragging do
-                local mousePos = UserInputService:GetMouseLocation().X
-                local sliderPos = decoTransSlider.AbsolutePosition.X
-                local sliderSize = decoTransSlider.AbsoluteSize.X
-                local relative = (mousePos - sliderPos) / sliderSize
-                updateDecoTransparency(relative)
-                task.wait()
-            end
-        end
-        task.spawn(update)
-        
-        local connection
-        connection = input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-                connection:Disconnect()
-            end
-        end)
+        decoTransDragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if decoTransDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local mousePos = UserInputService:GetMouseLocation().X
+        local sliderPos = decoTransSlider.AbsolutePosition.X
+        local sliderSize = decoTransSlider.AbsoluteSize.X
+        local relative = math.clamp((mousePos - sliderPos) / sliderSize, 0, 1)
+        updateDecoTransparency(relative)
     end
 end)
 
