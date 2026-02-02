@@ -1,39 +1,131 @@
--- Euva Main GUI
--- Complete fresh start with unified design
--- Color: #F8E8ED with gradient from bottom-left to top-right
+ -- Euva Main GUI
+-- Polished UI with all features
 
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+local Lighting = game:GetService("Lighting")
 
--- Create main ScreenGui
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local ASSETS = {
+	TreeL = "rbxassetid://97762968859118",
+	TreeR = "rbxassetid://137672331508230",
+	LArrow = "rbxassetid://85796063517484",
+	RArrow = "rbxassetid://90725829162539",
+	RightSmallArrow = "rbxassetid://18844674",
+	Logo = "rbxassetid://93026898541845",
+	MoveIcon = "rbxassetid://1467771388",
+	Eye = "rbxassetid://117113193301064",
+	Wing = "rbxassetid://131942306305044",
+}
+
+local DISCORD_INVITE = "https://discord.gg/Wzmz9u99Hf"
+
+local THEME = {
+	Base = Color3.fromRGB(248, 232, 237),
+	Text = Color3.fromRGB(60, 50, 55),
+	TextMuted = Color3.fromRGB(100, 90, 95),
+	Soft = Color3.fromRGB(240, 220, 230),
+	SoftHover = Color3.fromRGB(235, 210, 220),
+	SliderBg = Color3.fromRGB(235, 215, 225),
+	SliderFill = Color3.fromRGB(220, 190, 210),
+	SliderKnob = Color3.fromRGB(210, 180, 200),
+	Line = Color3.fromRGB(255, 255, 255),
+}
+
+local function notify(txt)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = "EUVA",
+			Text = txt,
+			Duration = 2
+		})
+	end)
+end
+
+local function tryClipboard(str)
+	if typeof(setclipboard) == "function" then
+		setclipboard(str)
+		notify("Copied to Clipboard")
+		return true
+	end
+	return false
+end
+
+local function tween(obj, info, props)
+	local t = TweenService:Create(obj, info, props)
+	t:Play()
+	return t
+end
+
+local old = playerGui:FindFirstChild("EuvaMainGUI")
+if old then old:Destroy() end
+
+local oldBlur = Lighting:FindFirstChild("EuvaBlur")
+if oldBlur then oldBlur:Destroy() end
+
+local blur = Instance.new("BlurEffect")
+blur.Name = "EuvaBlur"
+blur.Size = 0
+blur.Parent = Lighting
+
 local mainGui = Instance.new("ScreenGui")
 mainGui.Name = "EuvaMainGUI"
 mainGui.ResetOnSpawn = false
 mainGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-mainGui.Parent = CoreGui
+mainGui.Parent = playerGui
 
--- Main container frame
+local outerLines = Instance.new("Frame")
+outerLines.Name = "OuterLines"
+outerLines.BackgroundTransparency = 1
+outerLines.Size = UDim2.fromScale(1, 1)
+outerLines.ZIndex = 5
+outerLines.Parent = mainGui
+
+local function outerLine(size, pos)
+	local f = Instance.new("Frame")
+	f.BackgroundColor3 = THEME.Line
+	f.BackgroundTransparency = 0.35
+	f.BorderSizePixel = 0
+	f.Size = size
+	f.Position = pos
+	f.ZIndex = 5
+	f.Active = false
+	f.Selectable = false
+	f.Parent = outerLines
+	return f
+end
+
+outerLine(UDim2.new(0, 900, 0, 2), UDim2.new(0.5, -450, 0.5, -280))
+outerLine(UDim2.new(0, 900, 0, 2), UDim2.new(0.5, -450, 0.5, 280))
+outerLine(UDim2.new(0, 2, 0, 600), UDim2.new(0.5, -460, 0.5, -300))
+outerLine(UDim2.new(0, 2, 0, 600), UDim2.new(0.5, 460, 0.5, -300))
+
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 800, 0, 500)
-mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+mainFrame.Size = UDim2.fromOffset(800, 500)
+mainFrame.Position = UDim2.fromScale(0.5, 0.5)
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-mainFrame.BackgroundColor3 = Color3.fromRGB(248, 232, 237) -- #F8E8ED
+mainFrame.BackgroundColor3 = THEME.Base
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
+mainFrame.Visible = false
 mainFrame.Parent = mainGui
 
--- Add UICorner for rounded corners
+local guiTransValue = 0.4
+mainFrame.BackgroundTransparency = guiTransValue * 0.7
+
 local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 12)
 mainCorner.Parent = mainFrame
 
--- Gradient overlay (bottom-left to top-right)
 local gradient = Instance.new("Frame")
 gradient.Name = "Gradient"
-gradient.Size = UDim2.new(1, 0, 1, 0)
+gradient.Size = UDim2.fromScale(1, 1)
 gradient.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 gradient.BackgroundTransparency = 0.85
 gradient.BorderSizePixel = 0
@@ -42,44 +134,46 @@ gradient.Parent = mainFrame
 
 local gradientUI = Instance.new("UIGradient")
 gradientUI.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(248, 232, 237)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 245, 248))
+	ColorSequenceKeypoint.new(0, THEME.Base),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 245, 248))
 }
-gradientUI.Rotation = 45 -- Bottom-left to top-right
+gradientUI.Rotation = 45
 gradientUI.Parent = gradient
 
--- Sidebar (left side navigation)
+local introLine = Instance.new("Frame")
+introLine.Name = "IntroLine"
+introLine.AnchorPoint = Vector2.new(0.5, 0.5)
+introLine.Position = UDim2.fromScale(0.5, 0.5)
+introLine.Size = UDim2.fromOffset(0, 2)
+introLine.BackgroundColor3 = THEME.Line
+introLine.BackgroundTransparency = 0.1
+introLine.BorderSizePixel = 0
+introLine.ZIndex = 999
+introLine.Parent = mainGui
+
 local sidebar = Instance.new("Frame")
 sidebar.Name = "Sidebar"
 sidebar.Size = UDim2.new(0, 180, 1, 0)
-sidebar.Position = UDim2.new(0, 0, 0, 0)
 sidebar.BackgroundTransparency = 1
-sidebar.BorderSizePixel = 0
-sidebar.ZIndex = 2
+sidebar.ZIndex = 10
 sidebar.Parent = mainFrame
 
--- Sidebar title
-local sidebarTitle = Instance.new("TextLabel")
-sidebarTitle.Name = "Title"
-sidebarTitle.Size = UDim2.new(1, -30, 0, 50)
-sidebarTitle.Position = UDim2.new(0, 15, 0, 20)
-sidebarTitle.BackgroundTransparency = 1
-sidebarTitle.Text = "EUVA"
-sidebarTitle.Font = Enum.Font.GothamBold -- Will use Inter-like substitute
-sidebarTitle.TextSize = 24
-sidebarTitle.TextColor3 = Color3.fromRGB(60, 50, 55)
-sidebarTitle.TextXAlignment = Enum.TextXAlignment.Left
-sidebarTitle.ZIndex = 3
-sidebarTitle.Parent = sidebar
+local euvaLogo = Instance.new("ImageLabel")
+euvaLogo.Name = "EuvaLogo"
+euvaLogo.Size = UDim2.new(0, 192, 0, 188)
+euvaLogo.Position = UDim2.new(0, -11, 0, -73)
+euvaLogo.BackgroundTransparency = 1
+euvaLogo.Image = ASSETS.Logo
+euvaLogo.ImageTransparency = 0
+euvaLogo.ZIndex = 11
+euvaLogo.Parent = sidebar
 
--- Tab container
 local tabContainer = Instance.new("Frame")
 tabContainer.Name = "TabContainer"
-tabContainer.Size = UDim2.new(1, -20, 1, -90)
+tabContainer.Size = UDim2.new(1, -20, 1, -190)
 tabContainer.Position = UDim2.new(0, 10, 0, 80)
 tabContainer.BackgroundTransparency = 1
-tabContainer.BorderSizePixel = 0
-tabContainer.ZIndex = 3
+tabContainer.ZIndex = 11
 tabContainer.Parent = sidebar
 
 local tabLayout = Instance.new("UIListLayout")
@@ -87,31 +181,110 @@ tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 tabLayout.Padding = UDim.new(0, 8)
 tabLayout.Parent = tabContainer
 
--- Content area (right side)
 local contentArea = Instance.new("Frame")
 contentArea.Name = "ContentArea"
 contentArea.Size = UDim2.new(1, -200, 1, -40)
 contentArea.Position = UDim2.new(0, 190, 0, 20)
 contentArea.BackgroundTransparency = 1
-contentArea.BorderSizePixel = 0
-contentArea.ZIndex = 2
+contentArea.ZIndex = 10
 contentArea.Parent = mainFrame
 
--- Content title
 local contentTitle = Instance.new("TextLabel")
 contentTitle.Name = "ContentTitle"
-contentTitle.Size = UDim2.new(1, 0, 0, 40)
-contentTitle.Position = UDim2.new(0, 0, 0, 0)
+contentTitle.Size = UDim2.new(1, -280, 0, 40)
 contentTitle.BackgroundTransparency = 1
 contentTitle.Text = "Welcome"
-contentTitle.Font = Enum.Font.GothamBold
+contentTitle.Font = Enum.Font.Code
 contentTitle.TextSize = 28
-contentTitle.TextColor3 = Color3.fromRGB(60, 50, 55)
+contentTitle.TextColor3 = THEME.Text
 contentTitle.TextXAlignment = Enum.TextXAlignment.Left
-contentTitle.ZIndex = 3
+contentTitle.ZIndex = 20
 contentTitle.Parent = contentArea
 
--- Content container (scrollable)
+local serverInfoFrame = Instance.new("Frame")
+serverInfoFrame.Name = "ServerInfoFrame"
+serverInfoFrame.Size = UDim2.fromOffset(260, 54)
+serverInfoFrame.Position = UDim2.new(1, -260, 0, 0)
+serverInfoFrame.BackgroundColor3 = THEME.Soft
+serverInfoFrame.BackgroundTransparency = 0.35
+serverInfoFrame.BorderSizePixel = 0
+serverInfoFrame.ZIndex = 25
+serverInfoFrame.Parent = contentArea
+
+local sCorner = Instance.new("UICorner")
+sCorner.CornerRadius = UDim.new(0, 8)
+sCorner.Parent = serverInfoFrame
+
+local sPad = Instance.new("UIPadding")
+sPad.PaddingLeft = UDim.new(0, 10)
+sPad.PaddingRight = UDim.new(0, 10)
+sPad.PaddingTop = UDim.new(0, 6)
+sPad.PaddingBottom = UDim.new(0, 6)
+sPad.Parent = serverInfoFrame
+
+local sLayout = Instance.new("UIListLayout")
+sLayout.FillDirection = Enum.FillDirection.Vertical
+sLayout.SortOrder = Enum.SortOrder.LayoutOrder
+sLayout.Padding = UDim.new(0, 2)
+sLayout.Parent = serverInfoFrame
+
+local gameNameLabel = Instance.new("TextLabel")
+gameNameLabel.BackgroundTransparency = 1
+gameNameLabel.Size = UDim2.new(1, 0, 0, 14)
+gameNameLabel.Font = Enum.Font.Gotham
+gameNameLabel.TextSize = 12
+gameNameLabel.TextColor3 = THEME.TextMuted
+gameNameLabel.TextXAlignment = Enum.TextXAlignment.Right
+gameNameLabel.ZIndex = 26
+gameNameLabel.Parent = serverInfoFrame
+
+local jobRow = Instance.new("Frame")
+jobRow.BackgroundTransparency = 1
+jobRow.Size = UDim2.new(1, 0, 0, 14)
+jobRow.ZIndex = 26
+jobRow.Parent = serverInfoFrame
+
+local jobTextBox = Instance.new("TextBox")
+jobTextBox.BackgroundTransparency = 1
+jobTextBox.Size = UDim2.new(1, -56, 1, 0)
+jobTextBox.ClearTextOnFocus = false
+jobTextBox.TextEditable = true
+jobTextBox.Font = Enum.Font.Gotham
+jobTextBox.TextSize = 12
+jobTextBox.TextColor3 = THEME.TextMuted
+jobTextBox.TextXAlignment = Enum.TextXAlignment.Right
+jobTextBox.ZIndex = 26
+jobTextBox.Parent = jobRow
+
+local copyJob = Instance.new("TextButton")
+copyJob.Size = UDim2.new(0, 56, 1, 0)
+copyJob.Position = UDim2.new(1, -56, 0, 0)
+copyJob.BackgroundTransparency = 1
+copyJob.Text = "[Copy]"
+copyJob.Font = Enum.Font.GothamBold
+copyJob.TextSize = 12
+copyJob.TextColor3 = THEME.Text
+copyJob.ZIndex = 27
+copyJob.Parent = jobRow
+
+local playerCountLabel = Instance.new("TextLabel")
+playerCountLabel.BackgroundTransparency = 1
+playerCountLabel.Size = UDim2.new(1, 0, 0, 14)
+playerCountLabel.Font = Enum.Font.Gotham
+playerCountLabel.TextSize = 12
+playerCountLabel.TextColor3 = THEME.TextMuted
+playerCountLabel.TextXAlignment = Enum.TextXAlignment.Right
+playerCountLabel.ZIndex = 26
+playerCountLabel.Parent = serverInfoFrame
+
+copyJob.MouseButton1Click:Connect(function()
+	local ok = tryClipboard(jobTextBox.Text)
+	if not ok then
+		notify("Clipboard blocked. Click JobId box and Ctrl+C.")
+		jobTextBox:CaptureFocus()
+	end
+end)
+
 local contentScroll = Instance.new("ScrollingFrame")
 contentScroll.Name = "ContentScroll"
 contentScroll.Size = UDim2.new(1, 0, 1, -60)
@@ -122,7 +295,7 @@ contentScroll.ScrollBarThickness = 4
 contentScroll.ScrollBarImageColor3 = Color3.fromRGB(200, 180, 190)
 contentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 contentScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-contentScroll.ZIndex = 3
+contentScroll.ZIndex = 20
 contentScroll.Parent = contentArea
 
 local contentLayout = Instance.new("UIListLayout")
@@ -130,246 +303,443 @@ contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
 contentLayout.Padding = UDim.new(0, 15)
 contentLayout.Parent = contentScroll
 
--- Close button (top right)
-local closeButton = Instance.new("TextButton")
-closeButton.Name = "CloseButton"
-closeButton.Size = UDim2.new(0, 40, 0, 40)
-closeButton.Position = UDim2.new(1, -50, 0, 10)
-closeButton.BackgroundColor3 = Color3.fromRGB(240, 220, 230)
-closeButton.BorderSizePixel = 0
-closeButton.Text = "×"
-closeButton.Font = Enum.Font.GothamBold
-closeButton.TextSize = 24
-closeButton.TextColor3 = Color3.fromRGB(60, 50, 55)
-closeButton.ZIndex = 5
-closeButton.Parent = mainFrame
+local function topBtn(symbol, xOff)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.fromOffset(40, 40)
+	btn.Position = UDim2.new(1, xOff, 0, 10)
+	btn.BackgroundColor3 = THEME.Soft
+	btn.BorderSizePixel = 0
+	btn.Text = symbol
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 24
+	btn.TextColor3 = THEME.Text
+	btn.ZIndex = 80
+	btn.Parent = mainFrame
 
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 8)
-closeCorner.Parent = closeButton
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 8)
+	c.Parent = btn
+	return btn
+end
+
+local closeButton = topBtn("×", -50)
+local minimizeButton = topBtn("−", -100)
 
 closeButton.MouseButton1Click:Connect(function()
-    mainGui:Destroy()
+	if blur then blur:Destroy() end
+	mainGui:Destroy()
 end)
 
--- Minimize button
-local minimizeButton = Instance.new("TextButton")
-minimizeButton.Name = "MinimizeButton"
-minimizeButton.Size = UDim2.new(0, 40, 0, 40)
-minimizeButton.Position = UDim2.new(1, -100, 0, 10)
-minimizeButton.BackgroundColor3 = Color3.fromRGB(240, 220, 230)
-minimizeButton.BorderSizePixel = 0
-minimizeButton.Text = "−"
-minimizeButton.Font = Enum.Font.GothamBold
-minimizeButton.TextSize = 24
-minimizeButton.TextColor3 = Color3.fromRGB(60, 50, 55)
-minimizeButton.ZIndex = 5
-minimizeButton.Parent = mainFrame
-
-local minimizeCorner = Instance.new("UICorner")
-minimizeCorner.CornerRadius = UDim.new(0, 8)
-minimizeCorner.Parent = minimizeButton
-
-local isMinimized = false
+local minimized = false
 minimizeButton.MouseButton1Click:Connect(function()
-    local TweenService = game:GetService("TweenService")
-    isMinimized = not isMinimized
-    
-    if isMinimized then
-        TweenService:Create(mainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, 200, 0, 60)
-        }):Play()
-        minimizeButton.Text = "+"
-    else
-        TweenService:Create(mainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, 800, 0, 500)
-        }):Play()
-        minimizeButton.Text = "−"
-    end
+	minimized = not minimized
+	if minimized then
+		tween(mainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {Size = UDim2.fromOffset(220, 70)})
+		minimizeButton.Text = "+"
+	else
+		tween(mainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {Size = UDim2.fromOffset(800, 500)})
+		minimizeButton.Text = "−"
+	end
 end)
 
--- Draggable functionality
-local dragging = false
-local dragStart = nil
-local startPos = nil
+local decoFade = {}
+local decoTransValue = 0.8
+
+local treeL = Instance.new("ImageLabel")
+treeL.Size = UDim2.fromOffset(40, 40)
+treeL.Position = UDim2.new(0, 10, 1, -50)
+treeL.BackgroundTransparency = 1
+treeL.Image = ASSETS.TreeL
+treeL.ImageTransparency = 0.4
+treeL.ZIndex = 60
+treeL.Parent = contentArea
+
+local treeR = Instance.new("ImageLabel")
+treeR.Size = UDim2.fromOffset(40, 40)
+treeR.Position = UDim2.new(1, -50, 0, 10)
+treeR.BackgroundTransparency = 1
+treeR.Image = ASSETS.TreeR
+treeR.ImageTransparency = 0.4
+treeR.Rotation = 180
+treeR.ZIndex = 60
+treeR.Parent = contentArea
+
+local lArrow = Instance.new("ImageLabel")
+lArrow.Size = UDim2.fromOffset(30, 30)
+lArrow.Position = UDim2.new(0, 10, 0, 5)
+lArrow.BackgroundTransparency = 1
+lArrow.Image = ASSETS.LArrow
+lArrow.ImageTransparency = 0.4
+lArrow.ZIndex = 60
+lArrow.Parent = mainFrame
+
+local rightFacedArrow = Instance.new("ImageLabel")
+rightFacedArrow.Size = UDim2.fromOffset(18, 18)
+rightFacedArrow.Position = UDim2.new(0, 44, 0, 11)
+rightFacedArrow.BackgroundTransparency = 1
+rightFacedArrow.Image = ASSETS.RightSmallArrow
+rightFacedArrow.ImageTransparency = 0.4
+rightFacedArrow.ZIndex = 60
+rightFacedArrow.Parent = mainFrame
+
+local rArrow = Instance.new("ImageLabel")
+rArrow.Size = UDim2.fromOffset(30, 30)
+rArrow.Position = UDim2.new(1, -40, 1, -40)
+rArrow.BackgroundTransparency = 1
+rArrow.Image = ASSETS.RArrow
+rArrow.ImageTransparency = 0.4
+rArrow.ZIndex = 60
+rArrow.Parent = mainFrame
+
+local eye = Instance.new("ImageLabel")
+eye.Size = UDim2.fromOffset(52, 52)
+eye.AnchorPoint = Vector2.new(0.5, 0.5)
+eye.Position = UDim2.new(0.5, 0, 0.5, -4)
+eye.BackgroundTransparency = 1
+eye.Image = ASSETS.Eye
+eye.ImageTransparency = decoTransValue
+eye.ZIndex = 55
+eye.Parent = mainFrame
+table.insert(decoFade, eye)
+
+local leftWing = Instance.new("ImageLabel")
+leftWing.Size = UDim2.fromOffset(44, 44)
+leftWing.AnchorPoint = Vector2.new(0.5, 0.5)
+leftWing.Position = UDim2.new(0.5, -64, 0.5, 8)
+leftWing.BackgroundTransparency = 1
+leftWing.Image = ASSETS.Wing
+leftWing.ImageTransparency = decoTransValue
+leftWing.ZIndex = 55
+leftWing.Parent = mainFrame
+table.insert(decoFade, leftWing)
+
+local rightWing = Instance.new("ImageLabel")
+rightWing.Size = UDim2.fromOffset(44, 44)
+rightWing.AnchorPoint = Vector2.new(0.5, 0.5)
+rightWing.Position = UDim2.new(0.5, 64, 0.5, 8)
+rightWing.BackgroundTransparency = 1
+rightWing.Image = ASSETS.Wing
+rightWing.Rotation = 180
+rightWing.ImageTransparency = decoTransValue
+rightWing.ZIndex = 55
+rightWing.Parent = mainFrame
+table.insert(decoFade, rightWing)
+
+local userPanel = Instance.new("Frame")
+userPanel.Name = "UserPanel"
+userPanel.Size = UDim2.new(1, -20, 0, 90)
+userPanel.Position = UDim2.new(0, 10, 1, -100)
+userPanel.BackgroundTransparency = 1
+userPanel.ZIndex = 20
+userPanel.Parent = sidebar
+
+local userPanelLayout = Instance.new("UIListLayout")
+userPanelLayout.FillDirection = Enum.FillDirection.Vertical
+userPanelLayout.SortOrder = Enum.SortOrder.LayoutOrder
+userPanelLayout.Padding = UDim.new(0, 2)
+userPanelLayout.Parent = userPanel
+
+local userTopRow = Instance.new("Frame")
+userTopRow.BackgroundTransparency = 1
+userTopRow.Size = UDim2.new(1, 0, 0, 40)
+userTopRow.ZIndex = 20
+userTopRow.Parent = userPanel
+
+local avatar = Instance.new("ImageLabel")
+avatar.Size = UDim2.fromOffset(36, 36)
+avatar.Position = UDim2.fromOffset(0, 2)
+avatar.BackgroundTransparency = 1
+avatar.ZIndex = 21
+avatar.Parent = userTopRow
+
+local aCorner = Instance.new("UICorner")
+aCorner.CornerRadius = UDim.new(1, 0)
+aCorner.Parent = avatar
+
+local nameCol = Instance.new("Frame")
+nameCol.BackgroundTransparency = 1
+nameCol.Position = UDim2.fromOffset(42, 0)
+nameCol.Size = UDim2.new(1, -42, 1, 0)
+nameCol.ZIndex = 21
+nameCol.Parent = userTopRow
+
+local nameLayout = Instance.new("UIListLayout")
+nameLayout.FillDirection = Enum.FillDirection.Vertical
+nameLayout.SortOrder = Enum.SortOrder.LayoutOrder
+nameLayout.Padding = UDim.new(0, 0)
+nameLayout.Parent = nameCol
+
+local usernameLabel = Instance.new("TextLabel")
+usernameLabel.BackgroundTransparency = 1
+usernameLabel.Size = UDim2.new(1, 0, 0, 18)
+usernameLabel.Font = Enum.Font.GothamBold
+usernameLabel.TextSize = 13
+usernameLabel.TextColor3 = THEME.Text
+usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
+usernameLabel.ZIndex = 21
+usernameLabel.Parent = nameCol
+
+local displayLabel = Instance.new("TextLabel")
+displayLabel.BackgroundTransparency = 1
+displayLabel.Size = UDim2.new(1, 0, 0, 18)
+displayLabel.Font = Enum.Font.Gotham
+displayLabel.TextSize = 12
+displayLabel.TextColor3 = THEME.TextMuted
+displayLabel.TextXAlignment = Enum.TextXAlignment.Left
+displayLabel.ZIndex = 21
+displayLabel.Parent = nameCol
+
+local statsLabel = Instance.new("TextLabel")
+statsLabel.BackgroundTransparency = 1
+statsLabel.Size = UDim2.new(1, 0, 0, 16)
+statsLabel.Font = Enum.Font.Gotham
+statsLabel.TextSize = 11
+statsLabel.TextColor3 = THEME.TextMuted
+statsLabel.TextXAlignment = Enum.TextXAlignment.Left
+statsLabel.ZIndex = 21
+statsLabel.Parent = userPanel
+
+local moneyLabel = Instance.new("TextLabel")
+moneyLabel.BackgroundTransparency = 1
+moneyLabel.Size = UDim2.new(1, 0, 0, 16)
+moneyLabel.Font = Enum.Font.Gotham
+moneyLabel.TextSize = 11
+moneyLabel.TextColor3 = THEME.TextMuted
+moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
+moneyLabel.ZIndex = 21
+moneyLabel.Parent = userPanel
+
+task.spawn(function()
+	local thumb, _ = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+	avatar.Image = thumb
+end)
+
+usernameLabel.Text = "@" .. player.Name
+displayLabel.Text = player.DisplayName .. "  |  ID: " .. player.UserId
+
+local fps = 60
+do
+	local acc = 0
+	local frames = 0
+	RunService.RenderStepped:Connect(function(dt)
+		acc += dt
+		frames += 1
+		if acc >= 1 then
+			fps = math.floor(frames / acc + 0.5)
+			acc = 0
+			frames = 0
+		end
+	end)
+end
+
+local function getStat(name)
+	local ls = player:FindFirstChild("leaderstats")
+	if not ls then return nil end
+	local v = ls:FindFirstChild(name)
+	if not v then return nil end
+	if v:IsA("NumberValue") or v:IsA("IntValue") then
+		return v.Value
+	end
+	return nil
+end
+
+local dragEnabled = false
+
+local dragButton = Instance.new("ImageButton")
+dragButton.Name = "DragToggle"
+dragButton.Size = UDim2.fromOffset(26, 26)
+dragButton.Position = UDim2.new(1, -36, 1, -130)
+dragButton.BackgroundTransparency = 1
+dragButton.Image = ASSETS.MoveIcon
+dragButton.ImageTransparency = 0.2
+dragButton.ZIndex = 40
+dragButton.Parent = sidebar
+
+local dragStroke = Instance.new("UIStroke")
+dragStroke.Thickness = 2
+dragStroke.Transparency = 1
+dragStroke.Color = Color3.fromRGB(244, 167, 187)
+dragStroke.Parent = dragButton
+
+dragButton.MouseButton1Click:Connect(function()
+	dragEnabled = not dragEnabled
+	dragStroke.Transparency = dragEnabled and 0 or 1
+	dragButton.ImageTransparency = dragEnabled and 0 or 0.2
+end)
+
+local dragging, dragStart, startPos = false, nil, nil
 
 mainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
-    end
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+	if not dragEnabled then return end
+
+	local objs = playerGui:GetGuiObjectsAtPosition(input.Position.X, input.Position.Y)
+	for _, o in ipairs(objs) do
+		if o:IsA("TextButton") or o:IsA("ImageButton") or o:IsA("TextBox") or o:IsA("ScrollingFrame") then
+			return
+		end
+	end
+
+	dragging = true
+	dragStart = input.Position
+	startPos = mainFrame.Position
 end)
 
 mainFrame.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local delta = input.Position - dragStart
-        mainFrame.Position = UDim2.new(
-            startPos.X.Scale,
-            startPos.X.Offset + delta.X,
-            startPos.Y.Scale,
-            startPos.Y.Offset + delta.Y
-        )
-    end
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+	if not dragging then return end
+	local delta = input.Position - dragStart
+	mainFrame.Position = UDim2.new(
+		startPos.X.Scale, startPos.X.Offset + delta.X,
+		startPos.Y.Scale, startPos.Y.Offset + delta.Y
+	)
 end)
 
--- Tab creation function
+local function pop(button)
+	local orig = button.Size
+	tween(button, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = UDim2.new(orig.X.Scale, orig.X.Offset - 6, orig.Y.Scale, orig.Y.Offset - 4)
+	})
+	task.wait(0.08)
+	tween(button, TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = orig
+	})
+end
+
+local function createSection(parent, title)
+	local s = Instance.new("Frame")
+	s.BackgroundTransparency = 1
+	s.Size = UDim2.new(1, 0, 0, 0)
+	s.AutomaticSize = Enum.AutomaticSize.Y
+	s.ZIndex = 25
+	s.Parent = parent
+
+	local l = Instance.new("UIListLayout")
+	l.Padding = UDim.new(0, 8)
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+	l.Parent = s
+
+	if title then
+		local t = Instance.new("TextLabel")
+		t.BackgroundTransparency = 1
+		t.Size = UDim2.new(1, 0, 0, 24)
+		t.Text = title
+		t.Font = Enum.Font.GothamBold
+		t.TextSize = 15
+		t.TextColor3 = THEME.Text
+		t.TextXAlignment = Enum.TextXAlignment.Left
+		t.ZIndex = 26
+		t.Parent = s
+	end
+	return s
+end
+
+local function createLabel(parent, txt)
+	local lb = Instance.new("TextLabel")
+	lb.BackgroundTransparency = 1
+	lb.Size = UDim2.new(1, 0, 0, 20)
+	lb.Text = txt
+	lb.Font = Enum.Font.Gotham
+	lb.TextSize = 13
+	lb.TextColor3 = Color3.fromRGB(80, 70, 75)
+	lb.TextXAlignment = Enum.TextXAlignment.Left
+	lb.ZIndex = 26
+	lb.Parent = parent
+	return lb
+end
+
+local function createButton(parent, txt, cb)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.fromOffset(160, 36)
+	b.BackgroundColor3 = THEME.Soft
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = false
+	b.Text = txt
+	b.Font = Enum.Font.Gotham
+	b.TextSize = 13
+	b.TextColor3 = THEME.Text
+	b.ZIndex = 26
+	b.Parent = parent
+
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 6)
+	c.Parent = b
+
+	b.MouseEnter:Connect(function() b.BackgroundColor3 = THEME.SoftHover end)
+	b.MouseLeave:Connect(function() b.BackgroundColor3 = THEME.Soft end)
+
+	b.MouseButton1Click:Connect(function()
+		pop(b)
+		if cb then cb() end
+	end)
+
+	return b
+end
+
 local currentTab = nil
+local tabFrames = {}
+local tabButtons = {}
+
 local function createTab(tabName)
-    -- Tab button
-    local tabButton = Instance.new("TextButton")
-    tabButton.Name = tabName .. "Tab"
-    tabButton.Size = UDim2.new(1, 0, 0, 36)
-    tabButton.BackgroundColor3 = Color3.fromRGB(240, 220, 230)
-    tabButton.BackgroundTransparency = 1
-    tabButton.BorderSizePixel = 0
-    tabButton.Text = tabName
-    tabButton.Font = Enum.Font.Gotham
-    tabButton.TextSize = 14
-    tabButton.TextColor3 = Color3.fromRGB(100, 90, 95)
-    tabButton.TextXAlignment = Enum.TextXAlignment.Left
-    tabButton.ZIndex = 4
-    tabButton.Parent = tabContainer
-    
-    local tabPadding = Instance.new("UIPadding")
-    tabPadding.PaddingLeft = UDim.new(0, 15)
-    tabPadding.Parent = tabButton
-    
-    -- Tab content frame
-    local tabFrame = Instance.new("Frame")
-    tabFrame.Name = tabName .. "Content"
-    tabFrame.Size = UDim2.new(1, 0, 1, 0)
-    tabFrame.BackgroundTransparency = 1
-    tabFrame.BorderSizePixel = 0
-    tabFrame.Visible = false
-    tabFrame.ZIndex = 3
-    tabFrame.Parent = contentScroll
-    
-    local tabFrameLayout = Instance.new("UIListLayout")
-    tabFrameLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    tabFrameLayout.Padding = UDim.new(0, 12)
-    tabFrameLayout.Parent = tabFrame
-    
-    -- Tab button click (put the logic in a function)
-    local function selectThisTab()
-        -- Hide all tab content frames
-        for _, child in pairs(contentScroll:GetChildren()) do
-            if child:IsA("Frame") and child.Name:match("Content$") then
-                child.Visible = false
-            end
-        end
-        
-        -- Reset all tab buttons
-        for _, btn in pairs(tabContainer:GetChildren()) do
-            if btn:IsA("TextButton") then
-                btn.BackgroundTransparency = 1
-                btn.TextColor3 = Color3.fromRGB(100, 90, 95)
-            end
-        end
-        
-        -- Show this tab
-        tabFrame.Visible = true
-        tabButton.BackgroundTransparency = 0
-        tabButton.TextColor3 = Color3.fromRGB(60, 50, 55)
-        contentTitle.Text = tabName
-        currentTab = tabFrame
-    end
-    
-    tabButton.MouseButton1Click:Connect(selectThisTab)
-    
-    -- Auto-select first tab (CALL THE FUNCTION, not the event)
-    if not currentTab then
-        selectThisTab()
-    end
-    
-    return tabFrame
+	local tabBtn = Instance.new("TextButton")
+	tabBtn.Size = UDim2.new(1, 0, 0, 36)
+	tabBtn.BackgroundColor3 = THEME.Soft
+	tabBtn.BackgroundTransparency = 1
+	tabBtn.BorderSizePixel = 0
+	tabBtn.AutoButtonColor = false
+	tabBtn.Text = tabName
+	tabBtn.Font = Enum.Font.Gotham
+	tabBtn.TextSize = 14
+	tabBtn.TextColor3 = THEME.TextMuted
+	tabBtn.TextXAlignment = Enum.TextXAlignment.Left
+	tabBtn.ZIndex = 12
+	tabBtn.Parent = tabContainer
+	tabButtons[tabName] = tabBtn
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 15)
+	pad.Parent = tabBtn
+
+	local tabFrame = Instance.new("Frame")
+	tabFrame.Name = tabName .. "Content"
+	tabFrame.BackgroundTransparency = 1
+	tabFrame.Size = UDim2.new(1, 0, 1, 0)
+	tabFrame.Visible = false
+	tabFrame.ZIndex = 22
+	tabFrame.Parent = contentScroll
+	tabFrames[tabName] = tabFrame
+
+	local lay = Instance.new("UIListLayout")
+	lay.Padding = UDim.new(0, 12)
+	lay.SortOrder = Enum.SortOrder.LayoutOrder
+	lay.Parent = tabFrame
+
+	local function select()
+		for _, f in pairs(tabFrames) do f.Visible = false end
+		for _, b in pairs(tabButtons) do
+			b.BackgroundTransparency = 1
+			b.TextColor3 = THEME.TextMuted
+		end
+
+		tabFrame.Visible = true
+		tabBtn.BackgroundTransparency = 0
+		tabBtn.TextColor3 = THEME.Text
+		contentTitle.Text = tabName
+		currentTab = tabFrame
+	end
+
+	tabBtn.MouseButton1Click:Connect(select)
+
+	if not currentTab then select() end
+	return tabFrame
 end
 
--- Button creation function
-local function createButton(parent, buttonText, callback)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(0, 140, 0, 36)
-    button.BackgroundColor3 = Color3.fromRGB(240, 220, 230)
-    button.BorderSizePixel = 0
-    button.Text = buttonText
-    button.Font = Enum.Font.Gotham
-    button.TextSize = 13
-    button.TextColor3 = Color3.fromRGB(60, 50, 55)
-    button.ZIndex = 4
-    button.Parent = parent
-    
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 6)
-    buttonCorner.Parent = button
-    
-    button.MouseButton1Click:Connect(callback)
-    
-    -- Hover effect
-    button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(235, 210, 220)
-    end)
-    
-    button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(240, 220, 230)
-    end)
-    
-    return button
-end
-
--- Label creation function
-local function createLabel(parent, labelText)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 20)
-    label.BackgroundTransparency = 1
-    label.Text = labelText
-    label.Font = Enum.Font.Gotham
-    label.TextSize = 13
-    label.TextColor3 = Color3.fromRGB(80, 70, 75)
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.ZIndex = 4
-    label.Parent = parent
-    
-    return label
-end
-
--- Section creation function
-local function createSection(parent, sectionTitle)
-    local section = Instance.new("Frame")
-    section.Size = UDim2.new(1, 0, 0, 0)
-    section.AutomaticSize = Enum.AutomaticSize.Y
-    section.BackgroundTransparency = 1
-    section.BorderSizePixel = 0
-    section.ZIndex = 4
-    section.Parent = parent
-    
-    local sectionLayout = Instance.new("UIListLayout")
-    sectionLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    sectionLayout.Padding = UDim.new(0, 8)
-    sectionLayout.Parent = section
-    
-    if sectionTitle then
-        local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(1, 0, 0, 24)
-        title.BackgroundTransparency = 1
-        title.Text = sectionTitle
-        title.Font = Enum.Font.GothamBold
-        title.TextSize = 15
-        title.TextColor3 = Color3.fromRGB(60, 50, 55)
-        title.TextXAlignment = Enum.TextXAlignment.Left
-        title.ZIndex = 4
-        title.Parent = section
-    end
-    
-    return section
-end
-
--- Create tabs
 local homeTab = createTab("Home")
 local visualTab = createTab("Visual")
 local combatTab = createTab("Combat")
@@ -377,296 +747,157 @@ local playerTab = createTab("Player")
 local miscTab = createTab("Misc")
 local settingsTab = createTab("Settings")
 
--- Populate Home tab
-local homeSection = createSection(homeTab, "Welcome to Euva")
-createLabel(homeSection, "Main system loaded successfully")
-createButton(homeSection, "Test Button", function()
-    print("Button clicked!")
-end)
-
--- ============================================
--- SETTINGS TAB - Transparency Controls
--- ============================================
-
--- GUI Transparency Settings
-local guiTransSection = createSection(settingsTab, "GUI Transparency")
-
-local guiTransLabel = createLabel(guiTransSection, "GUI Transparency: 0%")
-
-local guiTransSlider = Instance.new("Frame")
-guiTransSlider.Size = UDim2.new(1, -20, 0, 30)
-guiTransSlider.BackgroundColor3 = Color3.fromRGB(235, 215, 225)
-guiTransSlider.BorderSizePixel = 0
-guiTransSlider.ZIndex = 4
-guiTransSlider.Parent = guiTransSection
-
-local guiTransCorner = Instance.new("UICorner")
-guiTransCorner.CornerRadius = UDim.new(0, 6)
-guiTransCorner.Parent = guiTransSlider
-
-local guiTransFill = Instance.new("Frame")
-guiTransFill.Size = UDim2.new(0, 0, 1, 0)
-guiTransFill.BackgroundColor3 = Color3.fromRGB(220, 190, 210)
-guiTransFill.BorderSizePixel = 0
-guiTransFill.ZIndex = 5
-guiTransFill.Parent = guiTransSlider
-
-local guiTransFillCorner = Instance.new("UICorner")
-guiTransFillCorner.CornerRadius = UDim.new(0, 6)
-guiTransFillCorner.Parent = guiTransFill
-
-local guiTransDrag = Instance.new("TextButton")
-guiTransDrag.Size = UDim2.new(0, 20, 0, 20)
-guiTransDrag.Position = UDim2.new(0, -10, 0.5, -10)
-guiTransDrag.BackgroundColor3 = Color3.fromRGB(210, 180, 200)
-guiTransDrag.BorderSizePixel = 0
-guiTransDrag.Text = ""
-guiTransDrag.ZIndex = 6
-guiTransDrag.Parent = guiTransFill
-
-local guiTransDragCorner = Instance.new("UICorner")
-guiTransDragCorner.CornerRadius = UDim.new(1, 0)
-guiTransDragCorner.Parent = guiTransDrag
-
-local guiTransValue = 0
-local guiTransDragging = false
-
-local function updateGUITransparency(value)
-    guiTransValue = math.clamp(value, 0, 1)
-    guiTransFill.Size = UDim2.new(guiTransValue, 0, 1, 0)
-    guiTransLabel.Text = "GUI Transparency: " .. math.floor(guiTransValue * 100) .. "%"
-    mainFrame.BackgroundTransparency = guiTransValue * 0.7
+do
+	local s = createSection(homeTab, "Welcome to Euva")
+	createLabel(s, "Main system loaded successfully")
+	createButton(s, "Discord", function()
+		if not tryClipboard(DISCORD_INVITE) then
+			notify("Clipboard blocked. Copy manually from the box.")
+			local box = Instance.new("TextBox")
+			box.Size = UDim2.new(1, -20, 0, 28)
+			box.BackgroundColor3 = THEME.Soft
+			box.Text = DISCORD_INVITE
+			box.ClearTextOnFocus = false
+			box.Font = Enum.Font.Gotham
+			box.TextSize = 12
+			box.TextColor3 = THEME.Text
+			box.Parent = s
+			local cc = Instance.new("UICorner")
+			cc.CornerRadius = UDim.new(0, 6)
+			cc.Parent = box
+			box:CaptureFocus()
+		end
+	end)
 end
 
-guiTransDrag.MouseButton1Down:Connect(function()
-    guiTransDragging = true
-end)
-
--- Decoration Transparency Settings
-local decoTransSection = createSection(settingsTab, "Decoration Transparency")
-
-local decoTransLabel = createLabel(decoTransSection, "Decoration Transparency: 80%")
-
-local decoTransSlider = Instance.new("Frame")
-decoTransSlider.Size = UDim2.new(1, -20, 0, 30)
-decoTransSlider.BackgroundColor3 = Color3.fromRGB(235, 215, 225)
-decoTransSlider.BorderSizePixel = 0
-decoTransSlider.ZIndex = 4
-decoTransSlider.Parent = decoTransSection
-
-local decoTransCorner = Instance.new("UICorner")
-decoTransCorner.CornerRadius = UDim.new(0, 6)
-decoTransCorner.Parent = decoTransSlider
-
-local decoTransFill = Instance.new("Frame")
-decoTransFill.Size = UDim2.new(0.8, 0, 1, 0)
-decoTransFill.BackgroundColor3 = Color3.fromRGB(220, 190, 210)
-decoTransFill.BorderSizePixel = 0
-decoTransFill.ZIndex = 5
-decoTransFill.Parent = decoTransSlider
-
-local decoTransFillCorner = Instance.new("UICorner")
-decoTransFillCorner.CornerRadius = UDim.new(0, 6)
-decoTransFillCorner.Parent = decoTransFill
-
-local decoTransDrag = Instance.new("TextButton")
-decoTransDrag.Size = UDim2.new(0, 20, 0, 20)
-decoTransDrag.Position = UDim2.new(0, -10, 0.5, -10)
-decoTransDrag.BackgroundColor3 = Color3.fromRGB(210, 180, 200)
-decoTransDrag.BorderSizePixel = 0
-decoTransDrag.Text = ""
-decoTransDrag.ZIndex = 6
-decoTransDrag.Parent = decoTransFill
-
-local decoTransDragCorner = Instance.new("UICorner")
-decoTransDragCorner.CornerRadius = UDim.new(1, 0)
-decoTransDragCorner.Parent = decoTransDrag
-
-local decoTransValue = 0.8
-local decoTransDragging = false
-local decorationElements = {}
-
-local function updateDecoTransparency(value)
-    decoTransValue = math.clamp(value, 0, 1)
-    decoTransFill.Size = UDim2.new(decoTransValue, 0, 1, 0)
-    decoTransLabel.Text = "Decoration Transparency: " .. math.floor(decoTransValue * 100) .. "%"
-    
-    for _, element in pairs(decorationElements) do
-        if element and element.Parent then
-            element.ImageTransparency = decoTransValue
-        end
-    end
+local function setDecoTrans(v)
+	decoTransValue = math.clamp(v, 0, 1)
+	for _, img in ipairs(decoFade) do
+		if img and img.Parent then
+			img.ImageTransparency = decoTransValue
+		end
+	end
 end
 
-decoTransDrag.MouseButton1Down:Connect(function()
-    decoTransDragging = true
+local function createSliderBlock(parent, title, defaultValue, onChange)
+	local sec = createSection(parent, title)
+	local valueLabel = createLabel(sec, title .. ": " .. math.floor(defaultValue * 100) .. "%")
+
+	local slider = Instance.new("Frame")
+	slider.Size = UDim2.new(1, -20, 0, 30)
+	slider.BackgroundColor3 = THEME.SliderBg
+	slider.BorderSizePixel = 0
+	slider.ZIndex = 26
+	slider.Parent = sec
+
+	local sc = Instance.new("UICorner")
+	sc.CornerRadius = UDim.new(0, 6)
+	sc.Parent = slider
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(defaultValue, 0, 1, 0)
+	fill.BackgroundColor3 = THEME.SliderFill
+	fill.BorderSizePixel = 0
+	fill.ZIndex = 27
+	fill.Parent = slider
+
+	local fc = Instance.new("UICorner")
+	fc.CornerRadius = UDim.new(0, 6)
+	fc.Parent = fill
+
+	local knob = Instance.new("TextButton")
+	knob.Size = UDim2.fromOffset(20, 20)
+	knob.Position = UDim2.new(1, -10, 0.5, -10)
+	knob.AnchorPoint = Vector2.new(1, 0)
+	knob.BackgroundColor3 = THEME.SliderKnob
+	knob.BorderSizePixel = 0
+	knob.Text = ""
+	knob.ZIndex = 28
+	knob.Parent = fill
+
+	local kc = Instance.new("UICorner")
+	kc.CornerRadius = UDim.new(1, 0)
+	kc.Parent = knob
+
+	local dragging = false
+
+	knob.MouseButton1Down:Connect(function()
+		dragging = true
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+		if not dragging then return end
+
+		local mouseX = UserInputService:GetMouseLocation().X
+		local x0 = slider.AbsolutePosition.X
+		local w = slider.AbsoluteSize.X
+		local rel = math.clamp((mouseX - x0) / w, 0, 1)
+
+		fill.Size = UDim2.new(rel, 0, 1, 0)
+		valueLabel.Text = title .. ": " .. math.floor(rel * 100) .. "%"
+		onChange(rel)
+	end)
+
+	onChange(defaultValue)
+	return sec
+end
+
+createSliderBlock(settingsTab, "GUI Transparency", guiTransValue, function(v)
+	guiTransValue = v
+	mainFrame.BackgroundTransparency = guiTransValue * 0.7
 end)
 
--- Single UserInputService connection for both sliders
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        guiTransDragging = false
-        decoTransDragging = false
-    end
+createSliderBlock(settingsTab, "Decoration Transparency", 0.8, function(v)
+	setDecoTrans(v)
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        if guiTransDragging then
-            local mousePos = UserInputService:GetMouseLocation().X
-            local sliderPos = guiTransSlider.AbsolutePosition.X
-            local sliderSize = guiTransSlider.AbsoluteSize.X
-            local relative = math.clamp((mousePos - sliderPos) / sliderSize, 0, 1)
-            updateGUITransparency(relative)
-        end
-        
-        if decoTransDragging then
-            local mousePos = UserInputService:GetMouseLocation().X
-            local sliderPos = decoTransSlider.AbsolutePosition.X
-            local sliderSize = decoTransSlider.AbsoluteSize.X
-            local relative = math.clamp((mousePos - sliderPos) / sliderSize, 0, 1)
-            updateDecoTransparency(relative)
-        end
-    end
+createSliderBlock(settingsTab, "Background Blur", 0, function(v)
+	blur.Size = math.floor(v * 24)
 end)
 
--- ============================================
--- DECORATIVE ELEMENTS
--- ============================================
+local function updateTopInfo()
+	gameNameLabel.Text = "Game: " .. (game.Name or "Unknown")
+	jobTextBox.Text = "JobId: " .. (game.JobId ~= "" and game.JobId or "Local/Studio")
+	playerCountLabel.Text = "Players: " .. tostring(#Players:GetPlayers())
+end
 
--- TreeL - Content Area Left Bottom
-local treeLBottom = Instance.new("ImageLabel")
-treeLBottom.Name = "TreeLBottom"
-treeLBottom.Size = UDim2.new(0, 40, 0, 40)
-treeLBottom.Position = UDim2.new(0, 10, 1, -50)
-treeLBottom.BackgroundTransparency = 1
-treeLBottom.Image = "rbxassetid://97762968859118"
-treeLBottom.ImageTransparency = decoTransValue
-treeLBottom.ZIndex = 10
-treeLBottom.Parent = contentArea
-table.insert(decorationElements, treeLBottom)
+Players.PlayerAdded:Connect(updateTopInfo)
+Players.PlayerRemoving:Connect(updateTopInfo)
+updateTopInfo()
 
--- TreeR Inverted - Top Right
-local treeRTop = Instance.new("ImageLabel")
-treeRTop.Name = "TreeRTop"
-treeRTop.Size = UDim2.new(0, 40, 0, 40)
-treeRTop.Position = UDim2.new(1, -50, 0, 10)
-treeRTop.BackgroundTransparency = 1
-treeRTop.Image = "rbxassetid://137672331508230"
-treeRTop.ImageTransparency = decoTransValue
-treeRTop.Rotation = 180
-treeRTop.ZIndex = 10
-treeRTop.Parent = contentArea
-table.insert(decorationElements, treeRTop)
+task.spawn(function()
+	while mainGui.Parent do
+		local lv = getStat("LV") or getStat("Level") or 0
+		local wins = getStat("Wins") or 0
+		local money = getStat("Money") or getStat("Cash") or 0
 
--- LArrow - Entire GUI Left Top
-local lArrow = Instance.new("ImageLabel")
-lArrow.Name = "LArrow"
-lArrow.Size = UDim2.new(0, 30, 0, 30)
-lArrow.Position = UDim2.new(0, 10, 0, 10)
-lArrow.BackgroundTransparency = 1
-lArrow.Image = "rbxassetid://85796063517484"
-lArrow.ImageTransparency = decoTransValue
-lArrow.ZIndex = 10
-lArrow.Parent = mainFrame
-table.insert(decorationElements, lArrow)
+		statsLabel.Text = ("FPS: %d  |  LV: %s  |  Wins: %s"):format(fps, tostring(lv), tostring(wins))
+		moneyLabel.Text = ("Money: %s"):format(tostring(money))
+		task.wait(0.25)
+	end
+end)
 
--- RArrow - Entire GUI Right Bottom
-local rArrow = Instance.new("ImageLabel")
-rArrow.Name = "RArrow"
-rArrow.Size = UDim2.new(0, 30, 0, 30)
-rArrow.Position = UDim2.new(1, -40, 1, -40)
-rArrow.BackgroundTransparency = 1
-rArrow.Image = "rbxassetid://90725829162539"
-rArrow.ImageTransparency = decoTransValue
-rArrow.ZIndex = 10
-rArrow.Parent = mainFrame
-table.insert(decorationElements, rArrow)
+task.spawn(function()
+	tween(introLine, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = UDim2.fromOffset(820, 2)
+	}).Completed:Wait()
 
--- Eye - Center Middle
-local eye = Instance.new("ImageLabel")
-eye.Name = "Eye"
-eye.Size = UDim2.new(0, 50, 0, 50)
-eye.Position = UDim2.new(0.5, -25, 0.5, -25)
-eye.BackgroundTransparency = 1
-eye.Image = "rbxassetid://117113193301064"
-eye.ImageTransparency = decoTransValue
-eye.ZIndex = 10
-eye.Parent = mainFrame
-table.insert(decorationElements, eye)
+	mainFrame.Size = UDim2.fromOffset(820, 2)
+	mainFrame.Visible = true
 
--- Left Wing
-local leftWing = Instance.new("ImageLabel")
-leftWing.Name = "LeftWing"
-leftWing.Size = UDim2.new(0, 40, 0, 40)
-leftWing.Position = UDim2.new(0.5, -70, 0.5, -20)
-leftWing.BackgroundTransparency = 1
-leftWing.Image = "rbxassetid://131942306305044"
-leftWing.ImageTransparency = decoTransValue
-leftWing.ZIndex = 10
-leftWing.Parent = mainFrame
-table.insert(decorationElements, leftWing)
+	tween(mainFrame, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = UDim2.fromOffset(800, 500)
+	}).Completed:Wait()
 
--- Right Wing (Inverted)
-local rightWing = Instance.new("ImageLabel")
-rightWing.Name = "RightWing"
-rightWing.Size = UDim2.new(0, 40, 0, 40)
-rightWing.Position = UDim2.new(0.5, 30, 0.5, -20)
-rightWing.BackgroundTransparency = 1
-rightWing.Image = "rbxassetid://131942306305044"
-rightWing.ImageTransparency = decoTransValue
-rightWing.ScaleType = Enum.ScaleType.Fit
-rightWing.Rotation = 180
-rightWing.ZIndex = 10
-rightWing.Parent = mainFrame
-table.insert(decorationElements, rightWing)
-
--- ============================================
--- 4 THIN LINE GRID
--- ============================================
-
--- Vertical Line 1 (Left)
-local vLine1 = Instance.new("Frame")
-vLine1.Name = "GridVLine1"
-vLine1.Size = UDim2.new(0, 1, 1, 0)
-vLine1.Position = UDim2.new(0.25, 0, 0, 0)
-vLine1.BackgroundColor3 = Color3.fromRGB(230, 210, 220)
-vLine1.BackgroundTransparency = 0.7
-vLine1.BorderSizePixel = 0
-vLine1.ZIndex = 1
-vLine1.Parent = mainFrame
-
--- Vertical Line 2 (Right)
-local vLine2 = Instance.new("Frame")
-vLine2.Name = "GridVLine2"
-vLine2.Size = UDim2.new(0, 1, 1, 0)
-vLine2.Position = UDim2.new(0.75, 0, 0, 0)
-vLine2.BackgroundColor3 = Color3.fromRGB(230, 210, 220)
-vLine2.BackgroundTransparency = 0.7
-vLine2.BorderSizePixel = 0
-vLine2.ZIndex = 1
-vLine2.Parent = mainFrame
-
--- Horizontal Line 1 (Top)
-local hLine1 = Instance.new("Frame")
-hLine1.Name = "GridHLine1"
-hLine1.Size = UDim2.new(1, 0, 0, 1)
-hLine1.Position = UDim2.new(0, 0, 0.25, 0)
-hLine1.BackgroundColor3 = Color3.fromRGB(230, 210, 220)
-hLine1.BackgroundTransparency = 0.7
-hLine1.BorderSizePixel = 0
-hLine1.ZIndex = 1
-hLine1.Parent = mainFrame
-
--- Horizontal Line 2 (Bottom)
-local hLine2 = Instance.new("Frame")
-hLine2.Name = "GridHLine2"
-hLine2.Size = UDim2.new(1, 0, 0, 1)
-hLine2.Position = UDim2.new(0, 0, 0.75, 0)
-hLine2.BackgroundColor3 = Color3.fromRGB(230, 210, 220)
-hLine2.BackgroundTransparency = 0.7
-hLine2.BorderSizePixel = 0
-hLine2.ZIndex = 1
-hLine2.Parent = mainFrame
+	tween(introLine, TweenInfo.new(0.15), {BackgroundTransparency = 1}).Completed:Wait()
+	introLine:Destroy()
+end)
 
 print("✅ Euva Main GUI loaded")
