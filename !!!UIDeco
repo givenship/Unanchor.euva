@@ -1,0 +1,119 @@
+-- Euva Decorations Module
+-- Decorative elements (trees, arrows, eye, wings)
+
+local Decorations = {}
+Decorations.Theme = nil
+Decorations.Elements = {}
+Decorations.FadeElements = {}
+
+function Decorations.Create(mainFrame, contentArea)
+    local ASSETS = Decorations.Theme.Assets
+    local decoTransValue = Decorations.Theme.Config.DefaultDecoTransparency
+    
+    -- Tree Left (content bottom-left)
+    local treeL = Instance.new("ImageLabel")
+    treeL.Size = UDim2.fromOffset(40, 40)
+    treeL.Position = UDim2.new(0, 10, 1, -50)
+    treeL.BackgroundTransparency = 1
+    treeL.Image = ASSETS.TreeL
+    treeL.ImageTransparency = 0.4
+    treeL.ZIndex = 60
+    treeL.Parent = contentArea
+    Decorations.Elements.TreeL = treeL
+
+    -- Tree Right (content top-right, rotated 180)
+    local treeR = Instance.new("ImageLabel")
+    treeR.Size = UDim2.fromOffset(40, 40)
+    treeR.Position = UDim2.new(1, -50, 0, 10)
+    treeR.BackgroundTransparency = 1
+    treeR.Image = ASSETS.TreeR
+    treeR.ImageTransparency = 0.4
+    treeR.Rotation = 180
+    treeR.ZIndex = 60
+    treeR.Parent = contentArea
+    Decorations.Elements.TreeR = treeR
+
+    -- Left Arrow (GUI top-left)
+    local lArrow = Instance.new("ImageLabel")
+    lArrow.Size = UDim2.fromOffset(30, 30)
+    lArrow.Position = UDim2.new(0, 10, 0, 5)
+    lArrow.BackgroundTransparency = 1
+    lArrow.Image = ASSETS.LArrow
+    lArrow.ImageTransparency = 0.4
+    lArrow.ZIndex = 60
+    lArrow.Parent = mainFrame
+    Decorations.Elements.LArrow = lArrow
+
+    -- Right Small Arrow (next to LArrow)
+    local rightFacedArrow = Instance.new("ImageLabel")
+    rightFacedArrow.Size = UDim2.fromOffset(18, 18)
+    rightFacedArrow.Position = UDim2.new(0, 44, 0, 11)
+    rightFacedArrow.BackgroundTransparency = 1
+    rightFacedArrow.Image = ASSETS.RightSmallArrow
+    rightFacedArrow.ImageTransparency = 0.4
+    rightFacedArrow.ZIndex = 60
+    rightFacedArrow.Parent = mainFrame
+    Decorations.Elements.RightSmallArrow = rightFacedArrow
+
+    -- Right Arrow (GUI bottom-right)
+    local rArrow = Instance.new("ImageLabel")
+    rArrow.Size = UDim2.fromOffset(30, 30)
+    rArrow.Position = UDim2.new(1, -40, 1, -40)
+    rArrow.BackgroundTransparency = 1
+    rArrow.Image = ASSETS.RArrow
+    rArrow.ImageTransparency = 0.4
+    rArrow.ZIndex = 60
+    rArrow.Parent = mainFrame
+    Decorations.Elements.RArrow = rArrow
+
+    -- Eye (center, 80% transparent)
+    local eye = Instance.new("ImageLabel")
+    eye.Size = UDim2.fromOffset(52, 52)
+    eye.AnchorPoint = Vector2.new(0.5, 0.5)
+    eye.Position = UDim2.new(0.5, 0, 0.5, -4)
+    eye.BackgroundTransparency = 1
+    eye.Image = ASSETS.Eye
+    eye.ImageTransparency = decoTransValue
+    eye.ZIndex = 55
+    eye.Parent = mainFrame
+    Decorations.Elements.Eye = eye
+    table.insert(Decorations.FadeElements, eye)
+
+    -- Left Wing
+    local leftWing = Instance.new("ImageLabel")
+    leftWing.Size = UDim2.fromOffset(44, 44)
+    leftWing.AnchorPoint = Vector2.new(0.5, 0.5)
+    leftWing.Position = UDim2.new(0.5, -64, 0.5, 8)
+    leftWing.BackgroundTransparency = 1
+    leftWing.Image = ASSETS.Wing
+    leftWing.ImageTransparency = decoTransValue
+    leftWing.ZIndex = 55
+    leftWing.Parent = mainFrame
+    Decorations.Elements.LeftWing = leftWing
+    table.insert(Decorations.FadeElements, leftWing)
+
+    -- Right Wing (rotated 180)
+    local rightWing = Instance.new("ImageLabel")
+    rightWing.Size = UDim2.fromOffset(44, 44)
+    rightWing.AnchorPoint = Vector2.new(0.5, 0.5)
+    rightWing.Position = UDim2.new(0.5, 64, 0.5, 8)
+    rightWing.BackgroundTransparency = 1
+    rightWing.Image = ASSETS.Wing
+    rightWing.Rotation = 180
+    rightWing.ImageTransparency = decoTransValue
+    rightWing.ZIndex = 55
+    rightWing.Parent = mainFrame
+    Decorations.Elements.RightWing = rightWing
+    table.insert(Decorations.FadeElements, rightWing)
+end
+
+function Decorations.SetTransparency(value)
+    local trans = math.clamp(value, 0, 1)
+    for _, img in ipairs(Decorations.FadeElements) do
+        if img and img.Parent then
+            img.ImageTransparency = trans
+        end
+    end
+end
+
+return Decorations
