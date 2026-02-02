@@ -1,157 +1,214 @@
--- Euva Settings Module (Updated)
--- Uses new component system and matches theme
+-- Euva Main Entry Point
+-- Loads UI modules from GitHub and initializes GUI
 
-local SettingsModule = {}
-SettingsModule.Theme = nil
-SettingsModule.Components = nil
-SettingsModule.ui = nil
-SettingsModule.Layout = nil -- Optional, for blur/transparency control
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
 
-function SettingsModule.SetTheme(theme)
-    SettingsModule.Theme = theme
-end
+------------------------------------------
+-- MODULE URLS
+------------------------------------------
+local BASE_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/"
 
-function SettingsModule.SetComponents(comp)
-    SettingsModule.Components = comp
-end
+local UIModuleURLs = {
+    Theme = BASE_URL .. "!!!UITheme",
+    Components = BASE_URL .. "!!!UIComponents",
+    Deco = BASE_URL .. "!!!UIDeco",
+    Layout = BASE_URL .. "!!!UILayout",
+}
 
-function SettingsModule.SetUI(uiFn)
-    SettingsModule.ui = uiFn
-end
+local TabModuleURLs = {
+    Visual = BASE_URL .. "Visual",
+    Combat = BASE_URL .. "Combat",
+    Player = BASE_URL .. "Player",
+    Misc = BASE_URL .. "Misc",
+    Settings = BASE_URL .. "Settings",
+}
 
-function SettingsModule.SetLayout(layout)
-    SettingsModule.Layout = layout
-end
-
-function SettingsModule.CreateUI(parent)
-    local Theme = SettingsModule.Theme
-    local Components = SettingsModule.Components
-    local ui = SettingsModule.ui or Components.ui
-    local THEME = Theme.Colors
-    
-    -- APPEARANCE Section
-    local appearanceSection = Components.CreateSection(parent, "APPEARANCE")
-    
-    -- GUI Transparency slider (default 10%)
-    Components.CreateSlider(appearanceSection, "GUI Transparency", 10, 0, 100, function(value)
-        if SettingsModule.Layout and SettingsModule.Layout.SetGuiTransparency then
-            SettingsModule.Layout.SetGuiTransparency(value / 100)
-        end
+------------------------------------------
+-- LOADER
+------------------------------------------
+local function loadModule(url, name)
+    local success, result = pcall(function()
+        return game:HttpGet(url)
     end)
     
-    -- Background Blur slider
-    Components.CreateSlider(appearanceSection, "Background Blur", 0, 0, 100, function(value)
-        if SettingsModule.Layout and SettingsModule.Layout.SetBlur then
-            SettingsModule.Layout.SetBlur(value / 100)
-        end
-    end)
-    
-    -- Decoration Transparency slider
-    Components.CreateSlider(appearanceSection, "Decoration Transparency", 80, 0, 100, function(value)
-        -- If Decorations module is available
-        local Deco = rawget(_G, "EuvaDeco")
-        if Deco and Deco.SetTransparency then
-            Deco.SetTransparency(value / 100)
-        end
-    end)
-    
-    -- SCRIPT MANAGEMENT Section
-    local scriptSection = Components.CreateSection(parent, "SCRIPT MANAGEMENT")
-    
-    local reloadBtn = Components.CreateButton(scriptSection, "🔄 Reload Script", function()
-        -- Destroy all Euva GUIs
-        local CoreGui = game:GetService("CoreGui")
-        local Lighting = game:GetService("Lighting")
-        
-        -- Remove blur
-        local blur = Lighting:FindFirstChild("EuvaBlur")
-        if blur then blur:Destroy() end
-        
-        -- Remove GUI
-        local gui = CoreGui:FindFirstChild("EuvaMainGUI")
-        if gui then gui:Destroy() end
-        
-        print("[Euva] GUI destroyed - Re-execute script to reload")
-    end)
-    reloadBtn.Size = UDim2.new(1, -20, 0, 40)
-    
-    Components.CreateLabel(scriptSection, "Note: Re-execute your script to reload.", true)
-    
-    -- KEYBINDS Section
-    local keybindsSection = Components.CreateSection(parent, "KEYBINDS")
-    
-    local keybindData = {
-        {"Right Shift", "Toggle GUI visibility"},
-        {"Drag Toggle", "Enable/disable dragging parts (Misc tab)"},
-    }
-    
-    for _, kb in ipairs(keybindData) do
-        local row = ui("Frame", {
-            Size = UDim2.new(1, 0, 0, 24),
-            BackgroundTransparency = 1,
-            Parent = keybindsSection,
-        })
-        
-        ui("TextLabel", {
-            Size = UDim2.new(0, 100, 1, 0),
-            BackgroundTransparency = 1,
-            Text = kb[1],
-            Font = Enum.Font.GothamBold,
-            TextSize = 12,
-            TextColor3 = THEME.Text,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            Parent = row,
-        })
-        
-        ui("TextLabel", {
-            Size = UDim2.new(1, -110, 1, 0),
-            Position = UDim2.new(0, 110, 0, 0),
-            BackgroundTransparency = 1,
-            Text = "- " .. kb[2],
-            Font = Enum.Font.Gotham,
-            TextSize = 12,
-            TextColor3 = THEME.TextMuted,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            Parent = row,
-        })
+    if not success then
+        warn("[Euva] Failed to download " .. name .. ": " .. tostring(result))
+        return nil
     end
     
-    -- INFORMATION Section
-    local infoSection = Components.CreateSection(parent, "INFORMATION")
+    local fn, err = loadstring(result)
+    if not fn then
+        warn("[Euva] Failed to parse " .. name .. ": " .. tostring(err))
+        return nil
+    end
     
-    local infoText = [[Euva GUI v2.0
-
-Features:
-• Visual - ESP, Health Bars, Object ESP
-• Combat - Hitbox Expander, Aimlock, Auto Defuse
-• Player - Reset, Jump Height, Noclip, Invisible
-• Misc - Part tools (Move, Rotate, Ring, RPM)
-• Settings - Appearance, Keybinds
-
-Made with ❤️]]
+    local ok, module = pcall(fn)
+    if not ok then
+        warn("[Euva] Failed to execute " .. name .. ": " .. tostring(module))
+        return nil
+    end
     
-    ui("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 120),
-        BackgroundTransparency = 1,
-        Text = infoText,
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
-        TextColor3 = THEME.TextMuted,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Top,
-        TextWrapped = true,
-        Parent = infoSection,
-    })
-    
-    -- Discord button at bottom
-    local discordBtn = Components.CreateButton(infoSection, "Join Discord", function()
-        Components.TryClipboard(Theme.Config.DiscordInvite)
-    end, true)
-    discordBtn.Size = UDim2.new(1, -20, 0, 36)
+    print("[Euva] Loaded: " .. name)
+    return module
 end
 
-function SettingsModule.Cleanup()
-    -- No cleanup needed
+------------------------------------------
+-- LOAD UI MODULES
+------------------------------------------
+print("[Euva] Loading UI modules...")
+
+local Theme = loadModule(UIModuleURLs.Theme, "Theme")
+local Components = loadModule(UIModuleURLs.Components, "Components")
+local Deco = loadModule(UIModuleURLs.Deco, "Decorations")
+local Layout = loadModule(UIModuleURLs.Layout, "Layout")
+
+if not (Theme and Components and Layout) then
+    error("[Euva] Failed to load core UI modules!")
+    return
 end
 
-return SettingsModule
+-- Wire up dependencies
+Components.Theme = Theme
+Layout.Theme = Theme
+Layout.Components = Components
+Layout.ui = Components.ui
+
+if Deco then
+    Deco.Theme = Theme
+    Deco.ui = Components.ui
+    rawset(_G, "EuvaDeco", Deco) -- Store globally for Settings access
+end
+
+------------------------------------------
+-- CREATE GUI
+------------------------------------------
+print("[Euva] Creating GUI...")
+
+Layout.Create(CoreGui)
+
+-- Create decorations
+if Deco then
+    Deco.Create(Layout.MainFrame, Layout.ContentArea)
+end
+
+------------------------------------------
+-- CREATE TABS
+------------------------------------------
+local tabOrder = {"Home", "Visual", "Combat", "Player", "Misc", "Settings"}
+local loadedTabModules = {}
+
+-- Home tab (built-in)
+local homeTab = Layout.CreateTab("Home")
+local ui = Components.ui
+local THEME = Theme.Colors
+
+-- Home content
+local welcomeSection = Components.CreateSection(homeTab, nil)
+ui("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundTransparency = 1,
+    Text = "Welcome to Euva",
+    Font = Enum.Font.GothamBold,
+    TextSize = 20,
+    TextColor3 = THEME.Text,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 26,
+    Parent = welcomeSection,
+})
+ui("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 40),
+    BackgroundTransparency = 1,
+    Text = "Select a tab from the sidebar to get started.\nJoin our Discord for updates and support.",
+    Font = Enum.Font.Gotham,
+    TextSize = 13,
+    TextColor3 = THEME.TextMuted,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextWrapped = true,
+    ZIndex = 26,
+    Parent = welcomeSection,
+})
+
+Components.CreateButton(welcomeSection, "Join Discord", function()
+    Components.TryClipboard(Theme.Config.DiscordInvite)
+end, true) -- primary = true
+
+-- Create other tabs (loaded from GitHub)
+for _, tabName in ipairs(tabOrder) do
+    if tabName ~= "Home" then
+        local tabFrame = Layout.CreateTab(tabName)
+        
+        -- Load tab module async
+        task.spawn(function()
+            local url = TabModuleURLs[tabName]
+            if not url then return end
+            
+            local module = loadModule(url, tabName)
+            if module then
+                loadedTabModules[tabName] = module
+                
+                -- Inject dependencies
+                if module.SetTheme then module.SetTheme(Theme) end
+                if module.SetComponents then module.SetComponents(Components) end
+                if module.SetUI then module.SetUI(Components.ui) end
+                if module.SetLayout then module.SetLayout(Layout) end
+                
+                -- Create UI
+                if module.CreateUI then
+                    local ok, err = pcall(function()
+                        module.CreateUI(tabFrame)
+                    end)
+                    if not ok then
+                        warn("[Euva] " .. tabName .. " CreateUI error: " .. tostring(err))
+                    end
+                end
+            else
+                -- Show error in tab
+                ui("TextLabel", {
+                    Size = UDim2.new(1, 0, 0, 30),
+                    BackgroundTransparency = 1,
+                    Text = "Failed to load " .. tabName .. " module",
+                    Font = Enum.Font.Gotham,
+                    TextSize = 14,
+                    TextColor3 = Color3.fromRGB(220, 80, 80),
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    ZIndex = 26,
+                    Parent = tabFrame,
+                })
+            end
+        end)
+    end
+end
+
+------------------------------------------
+-- PLAY INTRO & START
+------------------------------------------
+Layout.PlayIntroAnimation()
+Layout.StartStatsLoop()
+
+------------------------------------------
+-- KEYBIND (Right Shift to toggle)
+------------------------------------------
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if input.KeyCode == Enum.KeyCode.RightShift and not gameProcessed then
+        Layout.MainFrame.Visible = not Layout.MainFrame.Visible
+        print("[Euva] GUI toggled:", Layout.MainFrame.Visible and "Visible" or "Hidden")
+    end
+end)
+
+------------------------------------------
+-- CLEANUP ON DESTROY
+------------------------------------------
+Layout.Gui.Destroying:Connect(function()
+    for name, module in pairs(loadedTabModules) do
+        if module.Cleanup then
+            pcall(module.Cleanup)
+        end
+    end
+    if Layout.Blur then
+        pcall(function() Layout.Blur:Destroy() end)
+    end
+    print("[Euva] Cleaned up")
+end)
+
+print("[Euva] Ready!")
