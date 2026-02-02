@@ -100,10 +100,11 @@ local function outerLine(size, pos)
 	return f
 end
 
-outerLine(UDim2.new(0, 900, 0, 2), UDim2.new(0.5, -450, 0.5, -280))
-outerLine(UDim2.new(0, 900, 0, 2), UDim2.new(0.5, -450, 0.5, 280))
-outerLine(UDim2.new(0, 2, 0, 600), UDim2.new(0.5, -460, 0.5, -300))
-outerLine(UDim2.new(0, 2, 0, 600), UDim2.new(0.5, 460, 0.5, -300))
+-- Outer lines (matching grid style)
+outerLine(UDim2.new(0, 820, 0, 1), UDim2.new(0.5, -410, 0.5, -260)) -- top
+outerLine(UDim2.new(0, 820, 0, 1), UDim2.new(0.5, -410, 0.5, 260))  -- bottom
+outerLine(UDim2.new(0, 1, 0, 520), UDim2.new(0.5, -410, 0.5, -260))  -- left
+outerLine(UDim2.new(0, 1, 0, 520), UDim2.new(0.5, 410, 0.5, -260))   -- right
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
@@ -123,39 +124,39 @@ local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 12)
 mainCorner.Parent = mainFrame
 
--- Grid lines (4 thin red lines matching image layout)
+-- Grid lines matching image (white, thin, same as outer lines)
 local vLine1 = Instance.new("Frame")
-vLine1.Name = "GridVLine1"
-vLine1.Size = UDim2.new(0, 2, 1, 0)
+vLine1.Size = UDim2.new(0, 1, 1, 0)
 vLine1.Position = UDim2.new(0, 180, 0, 0)
-vLine1.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+vLine1.BackgroundColor3 = THEME.Line
+vLine1.BackgroundTransparency = 0.35
 vLine1.BorderSizePixel = 0
 vLine1.ZIndex = 70
 vLine1.Parent = mainFrame
 
 local vLine2 = Instance.new("Frame")
-vLine2.Name = "GridVLine2"
-vLine2.Size = UDim2.new(0, 2, 0, 235)
+vLine2.Size = UDim2.new(0, 1, 0, 235)
 vLine2.Position = UDim2.new(0, 490, 0, 60)
-vLine2.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+vLine2.BackgroundColor3 = THEME.Line
+vLine2.BackgroundTransparency = 0.35
 vLine2.BorderSizePixel = 0
 vLine2.ZIndex = 70
 vLine2.Parent = mainFrame
 
 local hLine1 = Instance.new("Frame")
-hLine1.Name = "GridHLine1"
-hLine1.Size = UDim2.new(1, -200, 0, 2)
+hLine1.Size = UDim2.new(1, -190, 0, 1)
 hLine1.Position = UDim2.new(0, 190, 0, 60)
-hLine1.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+hLine1.BackgroundColor3 = THEME.Line
+hLine1.BackgroundTransparency = 0.35
 hLine1.BorderSizePixel = 0
 hLine1.ZIndex = 70
 hLine1.Parent = mainFrame
 
 local hLine2 = Instance.new("Frame")
-hLine2.Name = "GridHLine2"
-hLine2.Size = UDim2.new(1, -200, 0, 2)
+hLine2.Size = UDim2.new(1, -190, 0, 1)
 hLine2.Position = UDim2.new(0, 190, 0, 295)
-hLine2.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+hLine2.BackgroundColor3 = THEME.Line
+hLine2.BackgroundTransparency = 0.35
 hLine2.BorderSizePixel = 0
 hLine2.ZIndex = 70
 hLine2.Parent = mainFrame
@@ -301,7 +302,7 @@ copyJob.Text = "[Copy]"
 copyJob.Font = Enum.Font.GothamBold
 copyJob.TextSize = 12
 copyJob.TextColor3 = THEME.Text
-copyJob.TextWrapped = true
+copyJob.TextMultiLine = true
 copyJob.ZIndex = 27
 copyJob.Parent = jobRow
 
@@ -812,6 +813,7 @@ local playerTab = createTab("Player")
 local miscTab = createTab("Misc")
 local settingsTab = createTab("Settings")
 
+-- Home tab content
 do
 	local s = createSection(homeTab, "Welcome to Euva")
 	createLabel(s, "Main system loaded successfully")
@@ -834,6 +836,51 @@ do
 		end
 	end)
 end
+
+-- Load tab modules from GitHub
+local TAB_URLS = {
+	Visual = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Visual",
+	Combat = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Combat",
+	Player = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Player",
+	Misc = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Misc",
+}
+
+local function loadTabModule(tabName, tabFrame)
+	local url = TAB_URLS[tabName]
+	if not url then return end
+	
+	task.spawn(function()
+		local success, result = pcall(function()
+			return game:HttpGet(url)
+		end)
+		
+		if success then
+			local moduleFunc = loadstring(result)
+			if moduleFunc then
+				local env = {
+					Tab = tabFrame,
+					CreateSection = createSection,
+					CreateLabel = createLabel,
+					CreateButton = createButton,
+					Notify = notify,
+				}
+				setfenv(moduleFunc, setmetatable(env, {__index = getfenv()}))
+				moduleFunc()
+				print("✅ " .. tabName .. " tab loaded")
+			else
+				warn("❌ Failed to load " .. tabName .. " tab")
+			end
+		else
+			warn("❌ Failed to download " .. tabName .. " tab:", result)
+		end
+	end)
+end
+
+-- Load all tab modules
+loadTabModule("Visual", visualTab)
+loadTabModule("Combat", combatTab)
+loadTabModule("Player", playerTab)
+loadTabModule("Misc", miscTab)
 
 local function setDecoTrans(v)
 	decoTransValue = math.clamp(v, 0, 1)
