@@ -1,6 +1,8 @@
 -- Euva Main GUI
 -- Polished UI with all features
 
+print("hello")
+
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
