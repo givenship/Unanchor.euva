@@ -1,0 +1,355 @@
+-- Euva UI Components Module
+-- Reusable UI elements
+
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+
+local Components = {}
+Components.Theme = nil -- Set by Main
+
+local function tween(obj, info, props)
+    local t = TweenService:Create(obj, info, props)
+    t:Play()
+    return t
+end
+
+local function pop(button)
+    local orig = button.Size
+    tween(button, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.new(orig.X.Scale, orig.X.Offset - 6, orig.Y.Scale, orig.Y.Offset - 4)
+    })
+    task.wait(0.08)
+    tween(button, TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = orig
+    })
+end
+
+function Components.Notify(txt)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "EUVA",
+            Text = txt,
+            Duration = 2
+        })
+    end)
+end
+
+function Components.TryClipboard(str)
+    if typeof(setclipboard) == "function" then
+        setclipboard(str)
+        Components.Notify("Copied to Clipboard")
+        return true
+    end
+    return false
+end
+
+function Components.Tween(obj, info, props)
+    return tween(obj, info, props)
+end
+
+function Components.CreateSection(parent, title)
+    local THEME = Components.Theme.Colors
+    
+    local s = Instance.new("Frame")
+    s.BackgroundTransparency = 1
+    s.Size = UDim2.new(1, 0, 0, 0)
+    s.AutomaticSize = Enum.AutomaticSize.Y
+    s.ZIndex = 25
+    s.Parent = parent
+
+    local l = Instance.new("UIListLayout")
+    l.Padding = UDim.new(0, 8)
+    l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.Parent = s
+
+    if title then
+        local t = Instance.new("TextLabel")
+        t.BackgroundTransparency = 1
+        t.Size = UDim2.new(1, 0, 0, 24)
+        t.Text = title
+        t.Font = Enum.Font.GothamBold
+        t.TextSize = 15
+        t.TextColor3 = THEME.Text
+        t.TextXAlignment = Enum.TextXAlignment.Left
+        t.ZIndex = 26
+        t.Parent = s
+    end
+    return s
+end
+
+function Components.CreateLabel(parent, txt)
+    local THEME = Components.Theme.Colors
+    
+    local lb = Instance.new("TextLabel")
+    lb.BackgroundTransparency = 1
+    lb.Size = UDim2.new(1, 0, 0, 20)
+    lb.Text = txt
+    lb.Font = Enum.Font.Gotham
+    lb.TextSize = 13
+    lb.TextColor3 = Color3.fromRGB(80, 70, 75)
+    lb.TextXAlignment = Enum.TextXAlignment.Left
+    lb.ZIndex = 26
+    lb.Parent = parent
+    return lb
+end
+
+function Components.CreateButton(parent, txt, cb)
+    local THEME = Components.Theme.Colors
+    
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.fromOffset(160, 36)
+    b.BackgroundColor3 = THEME.Soft
+    b.BorderSizePixel = 0
+    b.AutoButtonColor = false
+    b.Text = txt
+    b.Font = Enum.Font.Gotham
+    b.TextSize = 13
+    b.TextColor3 = THEME.Text
+    b.ZIndex = 26
+    b.Parent = parent
+
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 6)
+    c.Parent = b
+
+    b.MouseEnter:Connect(function() b.BackgroundColor3 = THEME.SoftHover end)
+    b.MouseLeave:Connect(function() b.BackgroundColor3 = THEME.Soft end)
+
+    b.MouseButton1Click:Connect(function()
+        pop(b)
+        if cb then cb() end
+    end)
+
+    return b
+end
+
+function Components.CreateToggle(parent, txt, default, cb)
+    local THEME = Components.Theme.Colors
+    local enabled = default or false
+    
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(1, 0, 0, 36)
+    container.ZIndex = 26
+    container.Parent = parent
+    
+    local toggle = Instance.new("TextButton")
+    toggle.Size = UDim2.fromOffset(50, 26)
+    toggle.Position = UDim2.new(0, 0, 0, 5)
+    toggle.BackgroundColor3 = enabled and THEME.SliderFill or THEME.SliderBg
+    toggle.BorderSizePixel = 0
+    toggle.Text = ""
+    toggle.ZIndex = 27
+    toggle.Parent = container
+    
+    local tc = Instance.new("UICorner")
+    tc.CornerRadius = UDim.new(0, 13)
+    tc.Parent = toggle
+    
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.fromOffset(20, 20)
+    knob.Position = enabled and UDim2.new(1, -23, 0, 3) or UDim2.new(0, 3, 0, 3)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knob.ZIndex = 28
+    knob.Parent = toggle
+    
+    local kc = Instance.new("UICorner")
+    kc.CornerRadius = UDim.new(1, 0)
+    kc.Parent = knob
+    
+    local label = Instance.new("TextLabel")
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(1, -60, 1, 0)
+    label.Position = UDim2.new(0, 60, 0, 0)
+    label.Text = txt
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 13
+    label.TextColor3 = THEME.Text
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.ZIndex = 26
+    label.Parent = container
+    
+    toggle.MouseButton1Click:Connect(function()
+        enabled = not enabled
+        tween(toggle, TweenInfo.new(0.15), {
+            BackgroundColor3 = enabled and THEME.SliderFill or THEME.SliderBg
+        })
+        tween(knob, TweenInfo.new(0.15), {
+            Position = enabled and UDim2.new(1, -23, 0, 3) or UDim2.new(0, 3, 0, 3)
+        })
+        if cb then cb(enabled) end
+    end)
+    
+    return container, function() return enabled end
+end
+
+function Components.CreateSlider(parent, title, default, min, max, onChange)
+    local THEME = Components.Theme.Colors
+    min = min or 0
+    max = max or 1
+    default = default or min
+    
+    local sec = Components.CreateSection(parent, nil)
+    
+    local normalized = (default - min) / (max - min)
+    local valueLabel = Components.CreateLabel(sec, title .. ": " .. math.floor(default) .. (max <= 1 and "%" or ""))
+
+    local slider = Instance.new("Frame")
+    slider.Size = UDim2.new(1, -20, 0, 30)
+    slider.BackgroundColor3 = THEME.SliderBg
+    slider.BorderSizePixel = 0
+    slider.ZIndex = 26
+    slider.Parent = sec
+
+    local sc = Instance.new("UICorner")
+    sc.CornerRadius = UDim.new(0, 6)
+    sc.Parent = slider
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(normalized, 0, 1, 0)
+    fill.BackgroundColor3 = THEME.SliderFill
+    fill.BorderSizePixel = 0
+    fill.ZIndex = 27
+    fill.Parent = slider
+
+    local fc = Instance.new("UICorner")
+    fc.CornerRadius = UDim.new(0, 6)
+    fc.Parent = fill
+
+    local knob = Instance.new("TextButton")
+    knob.Size = UDim2.fromOffset(20, 20)
+    knob.Position = UDim2.new(1, -10, 0.5, -10)
+    knob.AnchorPoint = Vector2.new(1, 0)
+    knob.BackgroundColor3 = THEME.SliderKnob
+    knob.BorderSizePixel = 0
+    knob.Text = ""
+    knob.ZIndex = 28
+    knob.Parent = fill
+
+    local kc = Instance.new("UICorner")
+    kc.CornerRadius = UDim.new(1, 0)
+    kc.Parent = knob
+
+    local dragging = false
+
+    knob.MouseButton1Down:Connect(function()
+        dragging = true
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+        if not dragging then return end
+
+        local mouseX = UserInputService:GetMouseLocation().X
+        local x0 = slider.AbsolutePosition.X
+        local w = slider.AbsoluteSize.X
+        local rel = math.clamp((mouseX - x0) / w, 0, 1)
+        local value = min + (max - min) * rel
+
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+        
+        if max <= 1 then
+            valueLabel.Text = title .. ": " .. math.floor(rel * 100) .. "%"
+        else
+            valueLabel.Text = title .. ": " .. math.floor(value)
+        end
+        
+        if onChange then onChange(value) end
+    end)
+
+    if onChange then onChange(default) end
+    return sec
+end
+
+function Components.CreateDropdown(parent, title, options, default, onChange)
+    local THEME = Components.Theme.Colors
+    local selected = default or options[1]
+    local expanded = false
+    
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(1, 0, 0, 36)
+    container.ClipsDescendants = false
+    container.ZIndex = 30
+    container.Parent = parent
+    
+    local label = Instance.new("TextLabel")
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(0, 100, 0, 36)
+    label.Text = title .. ":"
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 13
+    label.TextColor3 = THEME.Text
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.ZIndex = 30
+    label.Parent = container
+    
+    local dropBtn = Instance.new("TextButton")
+    dropBtn.Size = UDim2.new(1, -110, 0, 32)
+    dropBtn.Position = UDim2.new(0, 105, 0, 2)
+    dropBtn.BackgroundColor3 = THEME.Soft
+    dropBtn.BorderSizePixel = 0
+    dropBtn.Text = selected .. " ▼"
+    dropBtn.Font = Enum.Font.Gotham
+    dropBtn.TextSize = 12
+    dropBtn.TextColor3 = THEME.Text
+    dropBtn.ZIndex = 31
+    dropBtn.Parent = container
+    
+    local dc = Instance.new("UICorner")
+    dc.CornerRadius = UDim.new(0, 6)
+    dc.Parent = dropBtn
+    
+    local optionFrame = Instance.new("Frame")
+    optionFrame.Size = UDim2.new(1, -110, 0, #options * 28)
+    optionFrame.Position = UDim2.new(0, 105, 0, 36)
+    optionFrame.BackgroundColor3 = THEME.Soft
+    optionFrame.BorderSizePixel = 0
+    optionFrame.Visible = false
+    optionFrame.ZIndex = 100
+    optionFrame.Parent = container
+    
+    local oc = Instance.new("UICorner")
+    oc.CornerRadius = UDim.new(0, 6)
+    oc.Parent = optionFrame
+    
+    local ol = Instance.new("UIListLayout")
+    ol.SortOrder = Enum.SortOrder.LayoutOrder
+    ol.Parent = optionFrame
+    
+    for _, opt in ipairs(options) do
+        local optBtn = Instance.new("TextButton")
+        optBtn.Size = UDim2.new(1, 0, 0, 28)
+        optBtn.BackgroundTransparency = 1
+        optBtn.Text = opt
+        optBtn.Font = Enum.Font.Gotham
+        optBtn.TextSize = 12
+        optBtn.TextColor3 = THEME.Text
+        optBtn.ZIndex = 101
+        optBtn.Parent = optionFrame
+        
+        optBtn.MouseButton1Click:Connect(function()
+            selected = opt
+            dropBtn.Text = selected .. " ▼"
+            optionFrame.Visible = false
+            expanded = false
+            if onChange then onChange(selected) end
+        end)
+    end
+    
+    dropBtn.MouseButton1Click:Connect(function()
+        expanded = not expanded
+        optionFrame.Visible = expanded
+    end)
+    
+    return container
+end
+
+return Components
