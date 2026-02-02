@@ -1,5 +1,5 @@
--- Euva Layout Module (Compressed)
--- ui() helper, table-driven borders/lines, minimal refs
+-- Euva Layout Module (Updated)
+-- Confirmation dialog, animations, discord icon, minimize notification
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -10,9 +10,8 @@ local Lighting = game:GetService("Lighting")
 local Layout = {}
 Layout.Theme = nil
 Layout.Components = nil
-Layout.ui = nil -- Set by Main
+Layout.ui = nil
 
--- Only store refs we actually need later
 Layout.Gui = nil
 Layout.MainFrame = nil
 Layout.Sidebar = nil
@@ -26,12 +25,11 @@ Layout.CurrentTab = nil
 Layout.Blur = nil
 Layout.IntroLine = nil
 Layout.DragEnabled = false
+Layout.IsClosing = false
 
--- Line refs for transparency control
 Layout.OuterLineFrames = {}
 Layout.GridLineFrames = {}
 
--- Server/User info refs
 Layout.GameNameLabel = nil
 Layout.JobTextBox = nil
 Layout.PlayerCountLabel = nil
@@ -40,12 +38,12 @@ Layout.MoneyLabel = nil
 Layout.ServerInfoButton = nil
 Layout.ServerInfoWindow = nil
 
--- Title animation refs
 Layout.TitleCursor = nil
 Layout.TitleUnderline = nil
+Layout.ConfirmDialog = nil
 
 local player = Players.LocalPlayer
-local guiTransValue = 0.1 -- Default 10%
+local guiTransValue = 0.1
 
 local function tween(obj, time, props, style, dir)
     style = style or Enum.EasingStyle.Quad
@@ -55,45 +53,33 @@ local function tween(obj, time, props, style, dir)
     return t
 end
 
-------------------------------------------
--- TABLE-DRIVEN DEFINITIONS
-------------------------------------------
-
--- Outer border lines {size, position} - relative to MainFrame
 local OuterBorders = {
-    {UDim2.new(1, 20, 0, 1), UDim2.new(0, -10, 0, -10)},   -- top
-    {UDim2.new(1, 20, 0, 1), UDim2.new(0, -10, 1, 10)},    -- bottom
-    {UDim2.new(0, 1, 1, 20), UDim2.new(0, -10, 0, -10)},   -- left
-    {UDim2.new(0, 1, 1, 20), UDim2.new(1, 10, 0, -10)},    -- right
+    {UDim2.new(1, 20, 0, 1), UDim2.new(0, -10, 0, -10)},
+    {UDim2.new(1, 20, 0, 1), UDim2.new(0, -10, 1, 10)},
+    {UDim2.new(0, 1, 1, 20), UDim2.new(0, -10, 0, -10)},
+    {UDim2.new(0, 1, 1, 20), UDim2.new(1, 10, 0, -10)},
 }
 
--- Grid lines {size, position}
 local GridLines = {
-    {UDim2.new(0, 1, 1, 0), UDim2.new(0, 180, 0, 0)},           -- sidebar edge
-    {UDim2.new(0, 1, 0, 235), UDim2.new(0, 490, 0, 60)},        -- content divider vert
-    {UDim2.new(1, -190, 0, 1), UDim2.new(0, 190, 0, 60)},       -- header separator
-    {UDim2.new(1, -190, 0, 1), UDim2.new(0, 190, 0, 295)},      -- content divider horiz
+    {UDim2.new(0, 1, 1, 0), UDim2.new(0, 180, 0, 0)},
+    {UDim2.new(0, 1, 0, 235), UDim2.new(0, 490, 0, 60)},
+    {UDim2.new(1, -190, 0, 1), UDim2.new(0, 190, 0, 60)},
+    {UDim2.new(1, -190, 0, 1), UDim2.new(0, 190, 0, 295)},
 }
 
-------------------------------------------
--- MAIN CREATE
-------------------------------------------
 function Layout.Create(CoreGui)
     local THEME = Layout.Theme.Colors
     local CONFIG = Layout.Theme.Config
     local ASSETS = Layout.Theme.Assets
     local ui = Layout.ui
     
-    -- Cleanup old
     local old = CoreGui:FindFirstChild("EuvaMainGUI")
     if old then old:Destroy() end
     local oldBlur = Lighting:FindFirstChild("EuvaBlur")
     if oldBlur then oldBlur:Destroy() end
     
-    -- Blur effect
     Layout.Blur = ui("BlurEffect", {Name = "EuvaBlur", Size = 0, Parent = Lighting})
     
-    -- ScreenGui
     Layout.Gui = ui("ScreenGui", {
         Name = "EuvaMainGUI",
         ResetOnSpawn = false,
@@ -101,7 +87,6 @@ function Layout.Create(CoreGui)
         Parent = CoreGui,
     })
     
-    -- Main frame
     Layout.MainFrame = ui("Frame", {
         Name = "MainFrame",
         Size = UDim2.fromOffset(CONFIG.GuiSize.Width, CONFIG.GuiSize.Height),
@@ -113,21 +98,16 @@ function Layout.Create(CoreGui)
         Visible = false,
         BackgroundTransparency = guiTransValue * 0.7,
         Parent = Layout.Gui,
-    }, {
-        ui("UICorner", {CornerRadius = UDim.new(0, 12)})
-    })
+    }, {ui("UICorner", {CornerRadius = UDim.new(0, 12)})})
     
-    -- Outer lines container (now parented to MainFrame)
     local outerLines = ui("Frame", {
         Name = "OuterLines",
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1),
-        Position = UDim2.fromScale(0, 0),
         ZIndex = 5,
         Parent = Layout.MainFrame,
     })
     
-    -- Create outer borders from table
     Layout.OuterLineFrames = {}
     for _, b in ipairs(OuterBorders) do
         local line = ui("Frame", {
@@ -137,14 +117,11 @@ function Layout.Create(CoreGui)
             Size = b[1],
             Position = b[2],
             ZIndex = 5,
-            Active = false,
-            Selectable = false,
             Parent = outerLines,
         })
         table.insert(Layout.OuterLineFrames, line)
     end
     
-    -- Grid lines from table
     Layout.GridLineFrames = {}
     for _, g in ipairs(GridLines) do
         local line = ui("Frame", {
@@ -159,8 +136,7 @@ function Layout.Create(CoreGui)
         table.insert(Layout.GridLineFrames, line)
     end
     
-    -- Gradient background
-    local gradient = ui("Frame", {
+    ui("Frame", {
         Name = "Gradient",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
@@ -168,17 +144,14 @@ function Layout.Create(CoreGui)
         BorderSizePixel = 0,
         ZIndex = 1,
         Parent = Layout.MainFrame,
-    }, {
-        ui("UIGradient", {
-            Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, THEME.Base),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 245, 248))
-            },
-            Rotation = 45,
-        })
-    })
+    }, {ui("UIGradient", {
+        Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, THEME.Base),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 245, 248))
+        },
+        Rotation = 45,
+    })})
     
-    -- Intro line
     Layout.IntroLine = ui("Frame", {
         Name = "IntroLine",
         AnchorPoint = Vector2.new(0.5, 0.5),
@@ -191,18 +164,15 @@ function Layout.Create(CoreGui)
         Parent = Layout.Gui,
     })
     
-    -- Create components
     Layout.CreateSidebar()
     Layout.CreateContentArea()
     Layout.CreateTopButtons()
+    Layout.CreateConfirmDialog()
     Layout.SetupDragging()
     
     return Layout.Gui
 end
 
-------------------------------------------
--- SIDEBAR
-------------------------------------------
 function Layout.CreateSidebar()
     local THEME = Layout.Theme.Colors
     local ASSETS = Layout.Theme.Assets
@@ -216,7 +186,6 @@ function Layout.CreateSidebar()
         Parent = Layout.MainFrame,
     })
     
-    -- Logo
     ui("ImageLabel", {
         Name = "EuvaLogo",
         Size = UDim2.new(0, 192, 0, 188),
@@ -227,7 +196,6 @@ function Layout.CreateSidebar()
         Parent = Layout.Sidebar,
     })
     
-    -- Tab container
     Layout.TabContainer = ui("Frame", {
         Name = "TabContainer",
         Size = UDim2.new(1, -20, 1, -190),
@@ -235,17 +203,12 @@ function Layout.CreateSidebar()
         BackgroundTransparency = 1,
         ZIndex = 11,
         Parent = Layout.Sidebar,
-    }, {
-        ui("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8)})
-    })
+    }, {ui("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8)})})
     
     Layout.CreateUserPanel()
     Layout.CreateDragToggle()
 end
 
-------------------------------------------
--- CONTENT AREA
-------------------------------------------
 function Layout.CreateContentArea()
     local THEME = Layout.Theme.Colors
     local ui = Layout.ui
@@ -259,7 +222,6 @@ function Layout.CreateContentArea()
         Parent = Layout.MainFrame,
     })
     
-    -- Content title
     Layout.ContentTitle = ui("TextLabel", {
         Name = "ContentTitle",
         Size = UDim2.new(1, -280, 0, 40),
@@ -273,9 +235,7 @@ function Layout.CreateContentArea()
         Parent = Layout.ContentArea,
     })
     
-    -- Title cursor (for typing animation)
     Layout.TitleCursor = ui("Frame", {
-        Name = "TitleCursor",
         BorderSizePixel = 0,
         BackgroundColor3 = THEME.Text,
         AnchorPoint = Vector2.new(0, 1),
@@ -285,12 +245,9 @@ function Layout.CreateContentArea()
         Parent = Layout.ContentArea,
     })
     
-    -- Title underline (for typing animation)
     Layout.TitleUnderline = ui("Frame", {
-        Name = "TitleUnderline",
         BorderSizePixel = 0,
         BackgroundColor3 = THEME.Text,
-        AnchorPoint = Vector2.new(0, 0),
         Size = UDim2.new(0, 0, 0, 2),
         Visible = false,
         ZIndex = 21,
@@ -299,7 +256,6 @@ function Layout.CreateContentArea()
     
     Layout.CreateServerInfo()
     
-    -- Content scroll
     Layout.ContentScroll = ui("ScrollingFrame", {
         Name = "ContentScroll",
         Size = UDim2.new(1, 0, 1, -60),
@@ -312,55 +268,36 @@ function Layout.CreateContentArea()
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
         ZIndex = 20,
         Parent = Layout.ContentArea,
-    }, {
-        ui("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 15)})
-    })
+    }, {ui("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 15)})})
 end
 
-------------------------------------------
--- SERVER INFO (Button + Popup Window)
-------------------------------------------
 function Layout.CreateServerInfo()
     local THEME = Layout.Theme.Colors
     local ui = Layout.ui
     
-    -- Server Info Button
     Layout.ServerInfoButton = ui("TextButton", {
-        Name = "ServerInfoButton",
-        Size = UDim2.fromOffset(140, 36),
-        Position = UDim2.new(1, -330, 0, 2),
+        Size = UDim2.fromOffset(120, 36),
+        Position = UDim2.new(1, -310, 0, 2),
         BackgroundColor3 = THEME.Soft,
         BackgroundTransparency = 0.35,
         BorderSizePixel = 0,
-        Text = "📊 Server Info",
+        Text = "Server Info",
         Font = Enum.Font.GothamBold,
         TextSize = 13,
         TextColor3 = THEME.Text,
         AutoButtonColor = false,
         ZIndex = 25,
         Parent = Layout.ContentArea,
-    }, {
-        ui("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
+    }, {ui("UICorner", {CornerRadius = UDim.new(0, 8)})})
     
-    -- Hover effects
-    Layout.ServerInfoButton.MouseEnter:Connect(function()
-        Layout.ServerInfoButton.BackgroundTransparency = 0.2
-    end)
-    Layout.ServerInfoButton.MouseLeave:Connect(function()
-        Layout.ServerInfoButton.BackgroundTransparency = 0.35
-    end)
+    Layout.ServerInfoButton.MouseEnter:Connect(function() Layout.ServerInfoButton.BackgroundTransparency = 0.2 end)
+    Layout.ServerInfoButton.MouseLeave:Connect(function() Layout.ServerInfoButton.BackgroundTransparency = 0.35 end)
     
-    -- Create popup window (initially hidden)
     Layout.CreateServerInfoWindow()
     
-    -- Toggle window on click
     Layout.ServerInfoButton.MouseButton1Click:Connect(function()
         if Layout.ServerInfoWindow then
-            Layout.ServerInfoWindow.Visible = not Layout.ServerInfoWindow.Visible
-            if Layout.ServerInfoWindow.Visible then
-                Layout.UpdateServerInfo()
-            end
+            if Layout.ServerInfoWindow.Visible then Layout.HideServerInfoWindow() else Layout.ShowServerInfoWindow() end
         end
     end)
 end
@@ -369,23 +306,17 @@ function Layout.CreateServerInfoWindow()
     local THEME = Layout.Theme.Colors
     local ui = Layout.ui
     
-    -- Popup window
     Layout.ServerInfoWindow = ui("Frame", {
-        Name = "ServerInfoWindow",
-        Size = UDim2.fromOffset(320, 200),
+        Size = UDim2.fromOffset(320, 2),
         Position = UDim2.new(0.5, -160, 0.5, -100),
-        AnchorPoint = Vector2.new(0, 0),
         BackgroundColor3 = THEME.Base,
         BorderSizePixel = 0,
         Visible = false,
+        ClipsDescendants = true,
         ZIndex = 200,
         Parent = Layout.Gui,
-    }, {
-        ui("UICorner", {CornerRadius = UDim.new(0, 12)}),
-        ui("UIStroke", {Color = THEME.Line, Thickness = 1, Transparency = 0.5})
-    })
+    }, {ui("UICorner", {CornerRadius = UDim.new(0, 12)}), ui("UIStroke", {Color = THEME.Line, Thickness = 1, Transparency = 0.5})})
     
-    -- Window header
     local header = ui("Frame", {
         Size = UDim2.new(1, 0, 0, 40),
         BackgroundColor3 = THEME.Soft,
@@ -393,338 +324,97 @@ function Layout.CreateServerInfoWindow()
         BorderSizePixel = 0,
         ZIndex = 201,
         Parent = Layout.ServerInfoWindow,
-    }, {
-        ui("UICorner", {CornerRadius = UDim.new(0, 12)})
-    })
+    }, {ui("UICorner", {CornerRadius = UDim.new(0, 12)})})
     
-    -- Fix bottom corners of header
-    ui("Frame", {
-        Size = UDim2.new(1, 0, 0, 12),
-        Position = UDim2.new(0, 0, 1, -12),
-        BackgroundColor3 = THEME.Soft,
-        BackgroundTransparency = 0.5,
-        BorderSizePixel = 0,
-        ZIndex = 201,
-        Parent = header,
-    })
+    ui("Frame", {Size = UDim2.new(1, 0, 0, 12), Position = UDim2.new(0, 0, 1, -12), BackgroundColor3 = THEME.Soft, BackgroundTransparency = 0.5, BorderSizePixel = 0, ZIndex = 201, Parent = header})
     
-    ui("TextLabel", {
-        Size = UDim2.new(1, -50, 1, 0),
-        Position = UDim2.new(0, 15, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "📊 Server Information",
-        Font = Enum.Font.GothamBold,
-        TextSize = 16,
-        TextColor3 = THEME.Text,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 202,
-        Parent = header,
-    })
+    ui("TextLabel", {Size = UDim2.new(1, -50, 1, 0), Position = UDim2.new(0, 15, 0, 0), BackgroundTransparency = 1, Text = "Server Information", Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = THEME.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 202, Parent = header})
     
-    -- Close button
-    local closeBtn = ui("TextButton", {
-        Size = UDim2.fromOffset(30, 30),
-        Position = UDim2.new(1, -35, 0, 5),
-        BackgroundColor3 = THEME.Soft,
-        BorderSizePixel = 0,
-        Text = "×",
-        Font = Enum.Font.GothamBold,
-        TextSize = 20,
-        TextColor3 = THEME.Text,
-        ZIndex = 202,
-        Parent = header,
-    }, {
-        ui("UICorner", {CornerRadius = UDim.new(0, 6)})
-    })
+    local closeBtn = ui("TextButton", {Size = UDim2.fromOffset(30, 30), Position = UDim2.new(1, -35, 0, 5), BackgroundColor3 = THEME.Soft, BorderSizePixel = 0, Text = "X", Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = THEME.Text, ZIndex = 202, Parent = header}, {ui("UICorner", {CornerRadius = UDim.new(0, 6)})})
     
-    closeBtn.MouseButton1Click:Connect(function()
-        Layout.ServerInfoWindow.Visible = false
-    end)
+    closeBtn.MouseButton1Click:Connect(function() Layout.HideServerInfoWindow() end)
+    closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(220, 80, 80); closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255) end)
+    closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = THEME.Soft; closeBtn.TextColor3 = THEME.Text end)
     
-    closeBtn.MouseEnter:Connect(function()
-        closeBtn.BackgroundColor3 = Color3.fromRGB(220, 80, 80)
-        closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    end)
-    closeBtn.MouseLeave:Connect(function()
-        closeBtn.BackgroundColor3 = THEME.Soft
-        closeBtn.TextColor3 = THEME.Text
-    end)
+    local content = ui("Frame", {Size = UDim2.new(1, -30, 1, -55), Position = UDim2.new(0, 15, 0, 50), BackgroundTransparency = 1, ZIndex = 201, Parent = Layout.ServerInfoWindow}, {ui("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8)})})
     
-    -- Content area
-    local content = ui("Frame", {
-        Size = UDim2.new(1, -30, 1, -55),
-        Position = UDim2.new(0, 15, 0, 50),
-        BackgroundTransparency = 1,
-        ZIndex = 201,
-        Parent = Layout.ServerInfoWindow,
-    }, {
-        ui("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8)})
-    })
-    
-    -- Info rows
-    local function createInfoRow(labelText, valueName)
-        local row = ui("Frame", {
-            Size = UDim2.new(1, 0, 0, 24),
-            BackgroundTransparency = 1,
-            ZIndex = 202,
-            Parent = content,
-        })
-        
-        ui("TextLabel", {
-            Size = UDim2.new(0, 80, 1, 0),
-            BackgroundTransparency = 1,
-            Text = labelText,
-            Font = Enum.Font.GothamBold,
-            TextSize = 12,
-            TextColor3 = THEME.Text,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 202,
-            Parent = row,
-        })
-        
-        local valueLabel = ui("TextLabel", {
-            Name = valueName,
-            Size = UDim2.new(1, -90, 1, 0),
-            Position = UDim2.new(0, 90, 0, 0),
-            BackgroundTransparency = 1,
-            Text = "...",
-            Font = Enum.Font.Gotham,
-            TextSize = 12,
-            TextColor3 = THEME.TextMuted,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 202,
-            Parent = row,
-        })
-        
-        return valueLabel
+    local function infoRow(label)
+        local row = ui("Frame", {Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, ZIndex = 202, Parent = content})
+        ui("TextLabel", {Size = UDim2.new(0, 80, 1, 0), BackgroundTransparency = 1, Text = label, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = THEME.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 202, Parent = row})
+        return ui("TextLabel", {Size = UDim2.new(1, -90, 1, 0), Position = UDim2.new(0, 90, 0, 0), BackgroundTransparency = 1, Text = "...", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = THEME.TextMuted, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 202, Parent = row})
     end
     
-    Layout.GameNameLabel = createInfoRow("Game:", "GameName")
-    Layout.PlayerCountLabel = createInfoRow("Players:", "PlayerCount")
+    Layout.GameNameLabel = infoRow("Game:")
+    Layout.PlayerCountLabel = infoRow("Players:")
     
-    -- JobId row with copy button
-    local jobRow = ui("Frame", {
-        Size = UDim2.new(1, 0, 0, 24),
-        BackgroundTransparency = 1,
-        ZIndex = 202,
-        Parent = content,
-    })
+    local jobRow = ui("Frame", {Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, ZIndex = 202, Parent = content})
+    ui("TextLabel", {Size = UDim2.new(0, 80, 1, 0), BackgroundTransparency = 1, Text = "JobId:", Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = THEME.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 202, Parent = jobRow})
+    Layout.JobTextBox = ui("TextBox", {Size = UDim2.new(1, -140, 1, 0), Position = UDim2.new(0, 90, 0, 0), BackgroundTransparency = 1, Text = "...", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = THEME.TextMuted, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, TextEditable = false, ZIndex = 202, Parent = jobRow})
     
-    ui("TextLabel", {
-        Size = UDim2.new(0, 80, 1, 0),
-        BackgroundTransparency = 1,
-        Text = "JobId:",
-        Font = Enum.Font.GothamBold,
-        TextSize = 12,
-        TextColor3 = THEME.Text,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 202,
-        Parent = jobRow,
-    })
-    
-    Layout.JobTextBox = ui("TextBox", {
-        Size = UDim2.new(1, -140, 1, 0),
-        Position = UDim2.new(0, 90, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "...",
-        Font = Enum.Font.Gotham,
-        TextSize = 11,
-        TextColor3 = THEME.TextMuted,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ClearTextOnFocus = false,
-        TextEditable = false,
-        ZIndex = 202,
-        Parent = jobRow,
-    })
-    
-    local copyBtn = ui("TextButton", {
-        Size = UDim2.fromOffset(50, 22),
-        Position = UDim2.new(1, -50, 0, 1),
-        BackgroundColor3 = THEME.Soft,
-        BorderSizePixel = 0,
-        Text = "Copy",
-        Font = Enum.Font.GothamBold,
-        TextSize = 11,
-        TextColor3 = THEME.Text,
-        ZIndex = 203,
-        Parent = jobRow,
-    }, {
-        ui("UICorner", {CornerRadius = UDim.new(0, 4)})
-    })
-    
+    local copyBtn = ui("TextButton", {Size = UDim2.fromOffset(50, 22), Position = UDim2.new(1, -50, 0, 1), BackgroundColor3 = THEME.Soft, BorderSizePixel = 0, Text = "Copy", Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = THEME.Text, ZIndex = 203, Parent = jobRow}, {ui("UICorner", {CornerRadius = UDim.new(0, 4)})})
     copyBtn.MouseButton1Click:Connect(function()
-        local jobId = game.JobId ~= "" and game.JobId or "Local/Studio"
-        local ok = Layout.Components.TryClipboard(jobId)
-        if ok then
-            copyBtn.Text = "✓"
-            task.delay(1, function()
-                if copyBtn and copyBtn.Parent then
-                    copyBtn.Text = "Copy"
-                end
-            end)
-        else
-            Layout.Components.Notify("Clipboard blocked")
-        end
+        local ok = Layout.Components.TryClipboard(game.JobId ~= "" and game.JobId or "Local/Studio")
+        if ok then copyBtn.Text = "OK"; task.delay(1, function() if copyBtn.Parent then copyBtn.Text = "Copy" end end) end
     end)
     
-    -- PlaceId row
-    local placeIdLabel = createInfoRow("PlaceId:", "PlaceId")
-    placeIdLabel.Text = tostring(game.PlaceId)
+    local placeLabel = infoRow("PlaceId:")
+    placeLabel.Text = tostring(game.PlaceId)
+    local verLabel = infoRow("Version:")
+    verLabel.Text = tostring(game.PlaceVersion)
     
-    -- PlaceVersion row
-    local versionLabel = createInfoRow("Version:", "Version")
-    versionLabel.Text = tostring(game.PlaceVersion)
-    
-    -- Make window draggable
     local dragging, dragStart, startPos = false, nil, nil
-    
-    header.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = Layout.ServerInfoWindow.Position
-        end
-    end)
-    
-    header.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-    
+    header.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging, dragStart, startPos = true, input.Position, Layout.ServerInfoWindow.Position end end)
+    header.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
     UserInputService.InputChanged:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
             local delta = input.Position - dragStart
-            Layout.ServerInfoWindow.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
-            )
+            Layout.ServerInfoWindow.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
 end
 
-------------------------------------------
--- USER PANEL
-------------------------------------------
+function Layout.ShowServerInfoWindow()
+    if not Layout.ServerInfoWindow then return end
+    Layout.UpdateServerInfo()
+    Layout.ServerInfoWindow.Size = UDim2.fromOffset(320, 2)
+    Layout.ServerInfoWindow.Visible = true
+    tween(Layout.ServerInfoWindow, 0.25, {Size = UDim2.fromOffset(320, 200)}, Enum.EasingStyle.Back)
+end
+
+function Layout.HideServerInfoWindow()
+    if not Layout.ServerInfoWindow then return end
+    tween(Layout.ServerInfoWindow, 0.2, {Size = UDim2.fromOffset(320, 2)}).Completed:Wait()
+    Layout.ServerInfoWindow.Visible = false
+end
+
 function Layout.CreateUserPanel()
     local THEME = Layout.Theme.Colors
     local ui = Layout.ui
     
-    local userPanel = ui("Frame", {
-        Name = "UserPanel",
-        Size = UDim2.new(1, -20, 0, 90),
-        Position = UDim2.new(0, 10, 1, -100),
-        BackgroundTransparency = 1,
-        ZIndex = 20,
-        Parent = Layout.Sidebar,
-    }, {
-        ui("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2)})
-    })
+    local userPanel = ui("Frame", {Size = UDim2.new(1, -20, 0, 90), Position = UDim2.new(0, 10, 1, -100), BackgroundTransparency = 1, ZIndex = 20, Parent = Layout.Sidebar}, {ui("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2)})})
     
-    local userTopRow = ui("Frame", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 40),
-        ZIndex = 20,
-        Parent = userPanel,
-    })
+    local userTopRow = ui("Frame", {BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), ZIndex = 20, Parent = userPanel})
+    local avatar = ui("ImageLabel", {Size = UDim2.fromOffset(36, 36), Position = UDim2.fromOffset(0, 2), BackgroundTransparency = 1, ZIndex = 21, Parent = userTopRow}, {ui("UICorner", {CornerRadius = UDim.new(1, 0)})})
     
-    local avatar = ui("ImageLabel", {
-        Size = UDim2.fromOffset(36, 36),
-        Position = UDim2.fromOffset(0, 2),
-        BackgroundTransparency = 1,
-        ZIndex = 21,
-        Parent = userTopRow,
-    }, {
-        ui("UICorner", {CornerRadius = UDim.new(1, 0)})
-    })
+    local nameCol = ui("Frame", {BackgroundTransparency = 1, Position = UDim2.fromOffset(42, 0), Size = UDim2.new(1, -42, 1, 0), ZIndex = 21, Parent = userTopRow}, {ui("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder})})
+    ui("TextLabel", {BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = THEME.Text, TextXAlignment = Enum.TextXAlignment.Left, Text = "@" .. player.Name, ZIndex = 21, Parent = nameCol})
+    ui("TextLabel", {BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = THEME.TextMuted, TextXAlignment = Enum.TextXAlignment.Left, Text = player.DisplayName .. "  |  ID: " .. player.UserId, ZIndex = 21, Parent = nameCol})
     
-    local nameCol = ui("Frame", {
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(42, 0),
-        Size = UDim2.new(1, -42, 1, 0),
-        ZIndex = 21,
-        Parent = userTopRow,
-    }, {
-        ui("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder})
-    })
+    Layout.StatsLabel = ui("TextLabel", {BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = THEME.TextMuted, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 21, Parent = userPanel})
+    Layout.MoneyLabel = ui("TextLabel", {BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = THEME.TextMuted, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 21, Parent = userPanel})
     
-    ui("TextLabel", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 18),
-        Font = Enum.Font.GothamBold,
-        TextSize = 13,
-        TextColor3 = THEME.Text,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Text = "@" .. player.Name,
-        ZIndex = 21,
-        Parent = nameCol,
-    })
-    
-    ui("TextLabel", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 18),
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
-        TextColor3 = THEME.TextMuted,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Text = player.DisplayName .. "  |  ID: " .. player.UserId,
-        ZIndex = 21,
-        Parent = nameCol,
-    })
-    
-    Layout.StatsLabel = ui("TextLabel", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 16),
-        Font = Enum.Font.Gotham,
-        TextSize = 11,
-        TextColor3 = THEME.TextMuted,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 21,
-        Parent = userPanel,
-    })
-    
-    Layout.MoneyLabel = ui("TextLabel", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 16),
-        Font = Enum.Font.Gotham,
-        TextSize = 11,
-        TextColor3 = THEME.TextMuted,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 21,
-        Parent = userPanel,
-    })
-    
-    -- Load avatar async
     task.spawn(function()
         local thumb = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
         avatar.Image = thumb
     end)
 end
 
-------------------------------------------
--- DRAG TOGGLE
-------------------------------------------
 function Layout.CreateDragToggle()
     local ASSETS = Layout.Theme.Assets
     local ui = Layout.ui
     
-    local dragButton = ui("ImageButton", {
-        Name = "DragToggle",
-        Size = UDim2.fromOffset(26, 26),
-        Position = UDim2.new(1, -36, 1, -130),
-        BackgroundTransparency = 1,
-        Image = ASSETS.MoveIcon,
-        ImageTransparency = 0.2,
-        ZIndex = 40,
-        Parent = Layout.Sidebar,
-    })
-    
-    local dragStroke = ui("UIStroke", {
-        Thickness = 2,
-        Transparency = 1,
-        Color = Color3.fromRGB(244, 167, 187),
-        Parent = dragButton,
-    })
+    local dragButton = ui("ImageButton", {Size = UDim2.fromOffset(26, 26), Position = UDim2.new(1, -36, 1, -130), BackgroundTransparency = 1, Image = ASSETS.MoveIcon, ImageTransparency = 0.2, ZIndex = 40, Parent = Layout.Sidebar})
+    local dragStroke = ui("UIStroke", {Thickness = 2, Transparency = 1, Color = Color3.fromRGB(244, 167, 187), Parent = dragButton})
     
     dragButton.MouseButton1Click:Connect(function()
         Layout.DragEnabled = not Layout.DragEnabled
@@ -733,50 +423,16 @@ function Layout.CreateDragToggle()
     end)
 end
 
-------------------------------------------
--- TOP BUTTONS
-------------------------------------------
 function Layout.CreateTopButtons()
     local THEME = Layout.Theme.Colors
     local CONFIG = Layout.Theme.Config
     local ui = Layout.ui
     
-    local function topBtn(symbol, xOff, color)
-        local btn = ui("TextButton", {
-            Size = UDim2.fromOffset(40, 40),
-            Position = UDim2.new(1, xOff, 0, 10),
-            BackgroundColor3 = color or THEME.Soft,
-            BorderSizePixel = 0,
-            Text = symbol,
-            Font = Enum.Font.GothamBold,
-            TextSize = 24,
-            TextColor3 = THEME.Text,
-            ZIndex = 80,
-            Parent = Layout.MainFrame,
-        }, {
-            ui("UICorner", {CornerRadius = UDim.new(0, 8)})
-        })
-        return btn
-    end
+    local closeButton = ui("TextButton", {Size = UDim2.fromOffset(40, 40), Position = UDim2.new(1, -50, 0, 10), BackgroundColor3 = THEME.Soft, BorderSizePixel = 0, Text = "X", Font = Enum.Font.GothamBold, TextSize = 18, TextColor3 = THEME.Text, ZIndex = 80, Parent = Layout.MainFrame}, {ui("UICorner", {CornerRadius = UDim.new(0, 8)})})
     
-    local closeButton = topBtn("×", -50)
-    local minimizeButton = topBtn("−", -100)
+    local minimizeButton = ui("TextButton", {Size = UDim2.fromOffset(40, 40), Position = UDim2.new(1, -100, 0, 10), BackgroundColor3 = THEME.Soft, BorderSizePixel = 0, Text = "-", Font = Enum.Font.GothamBold, TextSize = 24, TextColor3 = THEME.Text, ZIndex = 80, Parent = Layout.MainFrame}, {ui("UICorner", {CornerRadius = UDim.new(0, 8)})})
     
-    -- Discord button
-    local discordButton = ui("TextButton", {
-        Size = UDim2.fromOffset(100, 40),
-        Position = UDim2.new(1, -160, 0, 10),
-        BackgroundColor3 = THEME.Discord,
-        BorderSizePixel = 0,
-        Text = "Discord",
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        ZIndex = 80,
-        Parent = Layout.MainFrame,
-    }, {
-        ui("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
+    local discordButton = ui("ImageButton", {Size = UDim2.fromOffset(40, 40), Position = UDim2.new(1, -150, 0, 10), BackgroundColor3 = THEME.Discord, BorderSizePixel = 0, Image = "rbxassetid://9432830778", ImageColor3 = Color3.fromRGB(255, 255, 255), ScaleType = Enum.ScaleType.Fit, ZIndex = 80, Parent = Layout.MainFrame}, {ui("UICorner", {CornerRadius = UDim.new(0, 8)}), ui("UIPadding", {PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8)})})
     
     discordButton.MouseButton1Click:Connect(function()
         if not Layout.Components.TryClipboard(CONFIG.DiscordInvite) then
@@ -784,10 +440,9 @@ function Layout.CreateTopButtons()
         end
     end)
     
-    closeButton.MouseButton1Click:Connect(function()
-        if Layout.Blur then Layout.Blur:Destroy() end
-        Layout.Gui:Destroy()
-    end)
+    closeButton.MouseButton1Click:Connect(function() Layout.ShowConfirmDialog() end)
+    closeButton.MouseEnter:Connect(function() closeButton.BackgroundColor3 = Color3.fromRGB(220, 80, 80); closeButton.TextColor3 = Color3.fromRGB(255, 255, 255) end)
+    closeButton.MouseLeave:Connect(function() closeButton.BackgroundColor3 = THEME.Soft; closeButton.TextColor3 = THEME.Text end)
     
     local minimized = false
     minimizeButton.MouseButton1Click:Connect(function()
@@ -795,43 +450,66 @@ function Layout.CreateTopButtons()
         if minimized then
             tween(Layout.MainFrame, 0.25, {Size = UDim2.fromOffset(220, 70)})
             minimizeButton.Text = "+"
+            Layout.Components.Notify("Toggle GUI with Right Shift")
         else
             tween(Layout.MainFrame, 0.25, {Size = UDim2.fromOffset(CONFIG.GuiSize.Width, CONFIG.GuiSize.Height)})
-            minimizeButton.Text = "−"
+            minimizeButton.Text = "-"
         end
     end)
 end
 
-------------------------------------------
--- DRAGGING
-------------------------------------------
+function Layout.CreateConfirmDialog()
+    local THEME = Layout.Theme.Colors
+    local ui = Layout.ui
+    
+    Layout.ConfirmDialog = ui("Frame", {Size = UDim2.fromOffset(300, 150), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = THEME.Base, BorderSizePixel = 0, Visible = false, ZIndex = 300, Parent = Layout.Gui}, {ui("UICorner", {CornerRadius = UDim.new(0, 12)}), ui("UIStroke", {Color = THEME.Line, Thickness = 1})})
+    
+    ui("TextLabel", {Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, Text = "Close GUI?", Font = Enum.Font.GothamBold, TextSize = 18, TextColor3 = THEME.Text, ZIndex = 301, Parent = Layout.ConfirmDialog})
+    ui("TextLabel", {Size = UDim2.new(1, -20, 0, 40), Position = UDim2.new(0, 10, 0, 40), BackgroundTransparency = 1, Text = "Are you sure you want to close Euva?", Font = Enum.Font.Gotham, TextSize = 14, TextColor3 = THEME.TextMuted, TextWrapped = true, ZIndex = 301, Parent = Layout.ConfirmDialog})
+    
+    local btnContainer = ui("Frame", {Size = UDim2.new(1, -20, 0, 40), Position = UDim2.new(0, 10, 1, -55), BackgroundTransparency = 1, ZIndex = 301, Parent = Layout.ConfirmDialog})
+    
+    local cancelBtn = ui("TextButton", {Size = UDim2.new(0.48, 0, 1, 0), BackgroundColor3 = THEME.Soft, BorderSizePixel = 0, Text = "Cancel", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = THEME.Text, ZIndex = 302, Parent = btnContainer}, {ui("UICorner", {CornerRadius = UDim.new(0, 8)})})
+    local confirmBtn = ui("TextButton", {Size = UDim2.new(0.48, 0, 1, 0), Position = UDim2.new(0.52, 0, 0, 0), BackgroundColor3 = Color3.fromRGB(220, 80, 80), BorderSizePixel = 0, Text = "Close", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = Color3.fromRGB(255, 255, 255), ZIndex = 302, Parent = btnContainer}, {ui("UICorner", {CornerRadius = UDim.new(0, 8)})})
+    
+    cancelBtn.MouseButton1Click:Connect(function() Layout.HideConfirmDialog() end)
+    confirmBtn.MouseButton1Click:Connect(function() Layout.HideConfirmDialog(); Layout.CloseGUI() end)
+end
+
+function Layout.ShowConfirmDialog() if Layout.ConfirmDialog then Layout.ConfirmDialog.Visible = true end end
+function Layout.HideConfirmDialog() if Layout.ConfirmDialog then Layout.ConfirmDialog.Visible = false end end
+
+function Layout.CloseGUI()
+    if Layout.IsClosing then return end
+    Layout.IsClosing = true
+    local CONFIG = Layout.Theme.Config
+    local THEME = Layout.Theme.Colors
+    local ui = Layout.ui
+    
+    task.spawn(function()
+        tween(Layout.MainFrame, 0.25, {Size = UDim2.fromOffset(CONFIG.GuiSize.Width, 2)}).Completed:Wait()
+        local outroLine = ui("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(CONFIG.GuiSize.Width + 20, 2), BackgroundColor3 = THEME.Line, BackgroundTransparency = 0.1, BorderSizePixel = 0, ZIndex = 999, Parent = Layout.Gui})
+        Layout.MainFrame.Visible = false
+        tween(outroLine, 0.2, {Size = UDim2.fromOffset(0, 2)}).Completed:Wait()
+        if Layout.Blur then Layout.Blur:Destroy() end
+        Layout.Gui:Destroy()
+    end)
+end
+
 function Layout.SetupDragging()
     local CoreGui = game:GetService("CoreGui")
     local dragging, dragStart, startPos = false, nil, nil
     
     Layout.MainFrame.InputBegan:Connect(function(input)
         if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-        
         local mouseY = input.Position.Y
         local frameTop = Layout.MainFrame.AbsolutePosition.Y
         if mouseY - frameTop > 60 then return end
-        
         local objs = CoreGui:GetGuiObjectsAtPosition(input.Position.X, input.Position.Y)
-        for _, o in ipairs(objs) do
-            if o:IsA("TextButton") or o:IsA("ImageButton") or o:IsA("TextBox") or o:IsA("ScrollingFrame") then
-                return
-            end
-        end
-        
-        dragging = true
-        dragStart = input.Position
-        startPos = Layout.MainFrame.Position
+        for _, o in ipairs(objs) do if o:IsA("TextButton") or o:IsA("ImageButton") or o:IsA("TextBox") or o:IsA("ScrollingFrame") then return end end
+        dragging, dragStart, startPos = true, input.Position, Layout.MainFrame.Position
     end)
-    
-    Layout.MainFrame.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-    end)
-    
+    Layout.MainFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
     UserInputService.InputChanged:Connect(function(input)
         if input.UserInputType ~= Enum.UserInputType.MouseMovement or not dragging then return end
         local delta = input.Position - dragStart
@@ -839,117 +517,58 @@ function Layout.SetupDragging()
     end)
 end
 
-------------------------------------------
--- TABS
-------------------------------------------
 function Layout.CreateTab(tabName)
     local THEME = Layout.Theme.Colors
     local ui = Layout.ui
     
-    local tabBtn = ui("TextButton", {
-        Size = UDim2.new(1, 0, 0, 36),
-        BackgroundColor3 = THEME.Soft,
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        AutoButtonColor = false,
-        Text = tabName,
-        Font = Enum.Font.Gotham,
-        TextSize = 14,
-        TextColor3 = THEME.TextMuted,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 12,
-        Parent = Layout.TabContainer,
-    }, {
-        ui("UIPadding", {PaddingLeft = UDim.new(0, 15)})
-    })
+    local tabBtn = ui("TextButton", {Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = THEME.Soft, BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, Text = tabName, Font = Enum.Font.Gotham, TextSize = 14, TextColor3 = THEME.TextMuted, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 12, Parent = Layout.TabContainer}, {ui("UIPadding", {PaddingLeft = UDim.new(0, 15)})})
     Layout.TabButtons[tabName] = tabBtn
     
-    local tabFrame = ui("Frame", {
-        Name = tabName .. "Content",
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        Visible = false,
-        ZIndex = 22,
-        Parent = Layout.ContentScroll,
-    }, {
-        ui("UIListLayout", {Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder})
-    })
+    local tabFrame = ui("Frame", {Name = tabName .. "Content", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Visible = false, ZIndex = 22, Parent = Layout.ContentScroll}, {ui("UIListLayout", {Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder})})
     Layout.TabFrames[tabName] = tabFrame
     
     local function selectTab()
         for _, f in pairs(Layout.TabFrames) do f.Visible = false end
-        for _, b in pairs(Layout.TabButtons) do
-            b.BackgroundTransparency = 1
-            b.TextColor3 = THEME.TextMuted
-        end
-        
+        for _, b in pairs(Layout.TabButtons) do b.BackgroundTransparency = 1; b.TextColor3 = THEME.TextMuted end
         tabFrame.Visible = true
         tabBtn.BackgroundTransparency = 0
         tabBtn.TextColor3 = THEME.Text
         Layout.CurrentTab = tabFrame
-        
-        -- Play title animation
         Layout.PlayTitleAnim(tabName, 0.6)
     end
     
     tabBtn.MouseButton1Click:Connect(selectTab)
-    
     if not Layout.CurrentTab then selectTab() end
     return tabFrame
 end
 
-------------------------------------------
--- TITLE TYPING ANIMATION
-------------------------------------------
 function Layout.PlayTitleAnim(fullText, duration)
     duration = duration or 1
-    local titleLabel = Layout.ContentTitle
-    local cursor = Layout.TitleCursor
-    local underline = Layout.TitleUnderline
-    
+    local titleLabel, cursor, underline = Layout.ContentTitle, Layout.TitleCursor, Layout.TitleUnderline
     if not titleLabel or not cursor or not underline then return end
     
     cursor.Visible = false
     underline.Visible = false
-    
-    -- Measure text
-    local oldText = titleLabel.Text
     titleLabel.Text = fullText
     titleLabel.TextTransparency = 1
     
     RunService.RenderStepped:Wait()
-    local textW = titleLabel.TextBounds.X
-    local textH = titleLabel.TextBounds.Y
+    local textW, textH = titleLabel.TextBounds.X, titleLabel.TextBounds.Y
     
-    -- Position underline
-    underline.Position = UDim2.new(
-        titleLabel.Position.X.Scale, titleLabel.Position.X.Offset,
-        titleLabel.Position.Y.Scale, titleLabel.Position.Y.Offset + titleLabel.AbsoluteSize.Y - 4
-    )
+    underline.Position = UDim2.new(titleLabel.Position.X.Scale, titleLabel.Position.X.Offset, titleLabel.Position.Y.Scale, titleLabel.Position.Y.Offset + titleLabel.AbsoluteSize.Y - 4)
     underline.Size = UDim2.new(0, 0, 0, 2)
     underline.Visible = true
     underline.BackgroundTransparency = 0
     
-    -- Position cursor
     cursor.Size = UDim2.new(0, 2, 0, math.floor(textH * 0.9))
     cursor.Visible = true
     cursor.BackgroundTransparency = 0
     
-    -- Animate underline to final width BEFORE typing
     tween(underline, 0.25, {Size = UDim2.new(0, textW, 0, 2)})
     
-    -- Cursor blink loop
     local blinking = true
-    task.spawn(function()
-        while blinking and cursor.Parent do
-            cursor.Visible = true
-            task.wait(0.5)
-            cursor.Visible = false
-            task.wait(0.5)
-        end
-    end)
+    task.spawn(function() while blinking and cursor.Parent do cursor.Visible = true; task.wait(0.5); cursor.Visible = false; task.wait(0.5) end end)
     
-    -- Typing
     titleLabel.TextTransparency = 0
     titleLabel.Text = ""
     local chars = #fullText
@@ -957,108 +576,52 @@ function Layout.PlayTitleAnim(fullText, duration)
     
     for i = 1, chars do
         titleLabel.Text = string.sub(fullText, 1, i)
-        
         RunService.RenderStepped:Wait()
         local w = titleLabel.TextBounds.X
-        
-        cursor.Position = UDim2.new(
-            titleLabel.Position.X.Scale, titleLabel.Position.X.Offset + w + 4,
-            titleLabel.Position.Y.Scale, titleLabel.Position.Y.Offset + titleLabel.AbsoluteSize.Y - 6
-        )
-        
+        cursor.Position = UDim2.new(titleLabel.Position.X.Scale, titleLabel.Position.X.Offset + w + 4, titleLabel.Position.Y.Scale, titleLabel.Position.Y.Offset + titleLabel.AbsoluteSize.Y - 6)
         task.wait(perChar)
     end
     
-    -- Stop blinking
     task.wait(0.25)
     blinking = false
     cursor.Visible = false
     
-    -- Shrink underline from left
     local startPos = underline.Position
-    tween(underline, 0.25, {
-        Size = UDim2.new(0, 0, 0, 2),
-        Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + textW, startPos.Y.Scale, startPos.Y.Offset)
-    }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-    
+    tween(underline, 0.25, {Size = UDim2.new(0, 0, 0, 2), Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + textW, startPos.Y.Scale, startPos.Y.Offset)}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
     task.wait(0.26)
     underline.Visible = false
 end
 
-------------------------------------------
--- SETTERS
-------------------------------------------
 function Layout.SetGuiTransparency(value)
     guiTransValue = value
     Layout.MainFrame.BackgroundTransparency = guiTransValue * 0.7
-    
-    -- Update outer lines transparency
     local lineTrans = 0.35 + guiTransValue * 0.5
-    for _, line in ipairs(Layout.OuterLineFrames) do
-        if line and line.Parent then
-            line.BackgroundTransparency = lineTrans
-        end
-    end
-    
-    -- Update grid lines transparency
-    for _, line in ipairs(Layout.GridLineFrames) do
-        if line and line.Parent then
-            line.BackgroundTransparency = lineTrans
-        end
-    end
+    for _, line in ipairs(Layout.OuterLineFrames) do if line and line.Parent then line.BackgroundTransparency = lineTrans end end
+    for _, line in ipairs(Layout.GridLineFrames) do if line and line.Parent then line.BackgroundTransparency = lineTrans end end
 end
 
-function Layout.SetBlur(value)
-    if Layout.Blur then Layout.Blur.Size = math.floor(value * 24) end
-end
+function Layout.SetBlur(value) if Layout.Blur then Layout.Blur.Size = math.floor(value * 24) end end
 
-------------------------------------------
--- INTRO ANIMATION
-------------------------------------------
 function Layout.PlayIntroAnimation()
     task.spawn(function()
         tween(Layout.IntroLine, 0.25, {Size = UDim2.fromOffset(820, 2)}).Completed:Wait()
-        
         Layout.MainFrame.Size = UDim2.fromOffset(820, 2)
         Layout.MainFrame.Visible = true
-        
         tween(Layout.MainFrame, 0.28, {Size = UDim2.fromOffset(Layout.Theme.Config.GuiSize.Width, Layout.Theme.Config.GuiSize.Height)}).Completed:Wait()
-        
         tween(Layout.IntroLine, 0.15, {BackgroundTransparency = 1}).Completed:Wait()
         Layout.IntroLine:Destroy()
     end)
 end
 
-------------------------------------------
--- SERVER INFO UPDATE
-------------------------------------------
 function Layout.UpdateServerInfo()
-    if Layout.GameNameLabel then
-        Layout.GameNameLabel.Text = game.Name or "Unknown"
-    end
-    if Layout.JobTextBox then
-        Layout.JobTextBox.Text = game.JobId ~= "" and game.JobId or "Local/Studio"
-    end
-    if Layout.PlayerCountLabel then
-        Layout.PlayerCountLabel.Text = tostring(#Players:GetPlayers()) .. " / " .. tostring(Players.MaxPlayers)
-    end
+    if Layout.GameNameLabel then Layout.GameNameLabel.Text = game.Name or "Unknown" end
+    if Layout.JobTextBox then Layout.JobTextBox.Text = game.JobId ~= "" and game.JobId or "Local/Studio" end
+    if Layout.PlayerCountLabel then Layout.PlayerCountLabel.Text = tostring(#Players:GetPlayers()) .. " / " .. tostring(Players.MaxPlayers) end
 end
 
-------------------------------------------
--- STATS LOOP
-------------------------------------------
 function Layout.StartStatsLoop()
-    local fps = 60
-    local acc, frames = 0, 0
-    
-    RunService.RenderStepped:Connect(function(dt)
-        acc = acc + dt
-        frames = frames + 1
-        if acc >= 1 then
-            fps = math.floor(frames / acc + 0.5)
-            acc, frames = 0, 0
-        end
-    end)
+    local fps, acc, frames = 60, 0, 0
+    RunService.RenderStepped:Connect(function(dt) acc = acc + dt; frames = frames + 1; if acc >= 1 then fps = math.floor(frames / acc + 0.5); acc, frames = 0, 0 end end)
     
     local function getStat(name)
         local ls = player:FindFirstChild("leaderstats")
@@ -1073,7 +636,6 @@ function Layout.StartStatsLoop()
             local lv = getStat("LV") or getStat("Level") or 0
             local wins = getStat("Wins") or 0
             local money = getStat("Money") or getStat("Cash") or 0
-            
             Layout.StatsLabel.Text = ("FPS: %d  |  LV: %s  |  Wins: %s"):format(fps, tostring(lv), tostring(wins))
             Layout.MoneyLabel.Text = ("Money: %s"):format(tostring(money))
             task.wait(0.25)
