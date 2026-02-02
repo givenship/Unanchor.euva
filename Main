@@ -1,4 +1,4 @@
- -- Euva Main GUI
+-- Euva Main GUI
 -- Polished UI with all features
 
 local Players = game:GetService("Players")
@@ -9,7 +9,7 @@ local StarterGui = game:GetService("StarterGui")
 local Lighting = game:GetService("Lighting")
 
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+local CoreGui = game:GetService("CoreGui")
 
 local ASSETS = {
 	TreeL = "rbxassetid://97762968859118",
@@ -62,7 +62,7 @@ local function tween(obj, info, props)
 	return t
 end
 
-local old = playerGui:FindFirstChild("EuvaMainGUI")
+local old = CoreGui:FindFirstChild("EuvaMainGUI")
 if old then old:Destroy() end
 
 local oldBlur = Lighting:FindFirstChild("EuvaBlur")
@@ -77,7 +77,7 @@ local mainGui = Instance.new("ScreenGui")
 mainGui.Name = "EuvaMainGUI"
 mainGui.ResetOnSpawn = false
 mainGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-mainGui.Parent = playerGui
+mainGui.Parent = CoreGui
 
 local outerLines = Instance.new("Frame")
 outerLines.Name = "OuterLines"
@@ -122,6 +122,43 @@ mainFrame.BackgroundTransparency = guiTransValue * 0.7
 local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 12)
 mainCorner.Parent = mainFrame
+
+-- Grid lines (4 thin red lines matching image layout)
+local vLine1 = Instance.new("Frame")
+vLine1.Name = "GridVLine1"
+vLine1.Size = UDim2.new(0, 2, 1, 0)
+vLine1.Position = UDim2.new(0, 180, 0, 0)
+vLine1.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+vLine1.BorderSizePixel = 0
+vLine1.ZIndex = 70
+vLine1.Parent = mainFrame
+
+local vLine2 = Instance.new("Frame")
+vLine2.Name = "GridVLine2"
+vLine2.Size = UDim2.new(0, 2, 0, 235)
+vLine2.Position = UDim2.new(0, 490, 0, 60)
+vLine2.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+vLine2.BorderSizePixel = 0
+vLine2.ZIndex = 70
+vLine2.Parent = mainFrame
+
+local hLine1 = Instance.new("Frame")
+hLine1.Name = "GridHLine1"
+hLine1.Size = UDim2.new(1, -200, 0, 2)
+hLine1.Position = UDim2.new(0, 190, 0, 60)
+hLine1.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+hLine1.BorderSizePixel = 0
+hLine1.ZIndex = 70
+hLine1.Parent = mainFrame
+
+local hLine2 = Instance.new("Frame")
+hLine2.Name = "GridHLine2"
+hLine2.Size = UDim2.new(1, -200, 0, 2)
+hLine2.Position = UDim2.new(0, 190, 0, 295)
+hLine2.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+hLine2.BorderSizePixel = 0
+hLine2.ZIndex = 70
+hLine2.Parent = mainFrame
 
 local gradient = Instance.new("Frame")
 gradient.Name = "Gradient"
@@ -204,7 +241,7 @@ contentTitle.Parent = contentArea
 local serverInfoFrame = Instance.new("Frame")
 serverInfoFrame.Name = "ServerInfoFrame"
 serverInfoFrame.Size = UDim2.fromOffset(260, 54)
-serverInfoFrame.Position = UDim2.new(1, -260, 0, 0)
+serverInfoFrame.Position = UDim2.new(1, -450, 0, 0)
 serverInfoFrame.BackgroundColor3 = THEME.Soft
 serverInfoFrame.BackgroundTransparency = 0.35
 serverInfoFrame.BorderSizePixel = 0
@@ -264,6 +301,7 @@ copyJob.Text = "[Copy]"
 copyJob.Font = Enum.Font.GothamBold
 copyJob.TextSize = 12
 copyJob.TextColor3 = THEME.Text
+copyJob.TextWrapped = true
 copyJob.ZIndex = 27
 copyJob.Parent = jobRow
 
@@ -324,6 +362,29 @@ end
 
 local closeButton = topBtn("×", -50)
 local minimizeButton = topBtn("−", -100)
+
+-- Discord button (blue area - top right)
+local discordButton = Instance.new("TextButton")
+discordButton.Size = UDim2.fromOffset(100, 40)
+discordButton.Position = UDim2.new(1, -160, 0, 10)
+discordButton.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+discordButton.BorderSizePixel = 0
+discordButton.Text = "Discord"
+discordButton.Font = Enum.Font.GothamBold
+discordButton.TextSize = 14
+discordButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+discordButton.ZIndex = 80
+discordButton.Parent = mainFrame
+
+local discordCorner = Instance.new("UICorner")
+discordCorner.CornerRadius = UDim.new(0, 8)
+discordCorner.Parent = discordButton
+
+discordButton.MouseButton1Click:Connect(function()
+	if not tryClipboard(DISCORD_INVITE) then
+		notify("Clipboard blocked. Link: " .. DISCORD_INVITE)
+	end
+end)
 
 closeButton.MouseButton1Click:Connect(function()
 	if blur then blur:Destroy() end
@@ -571,9 +632,13 @@ local dragging, dragStart, startPos = false, nil, nil
 
 mainFrame.InputBegan:Connect(function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-	if not dragEnabled then return end
 
-	local objs = playerGui:GetGuiObjectsAtPosition(input.Position.X, input.Position.Y)
+	-- Only drag from top 60 pixels
+	local mouseY = input.Position.Y
+	local frameTop = mainFrame.AbsolutePosition.Y
+	if mouseY - frameTop > 60 then return end
+
+	local objs = CoreGui:GetGuiObjectsAtPosition(input.Position.X, input.Position.Y)
 	for _, o in ipairs(objs) do
 		if o:IsA("TextButton") or o:IsA("ImageButton") or o:IsA("TextBox") or o:IsA("ScrollingFrame") then
 			return
