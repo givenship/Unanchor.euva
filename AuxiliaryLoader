@@ -1,0 +1,168 @@
+-- Euva Key System GUI
+-- Simple key input that passes key to main system for validation
+-- No validation in this script
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local CoreGui = game:GetService("CoreGui")
+
+-- Configuration
+local MAIN_SYSTEM_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Authorize"
+
+-- Create Key GUI
+local gui = Instance.new("ScreenGui")
+gui.Name = "EuvaKeyGUI"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = CoreGui
+
+-- Main frame
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 350, 0, 180)
+frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+frame.AnchorPoint = Vector2.new(0.5, 0.5)
+frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+frame.BackgroundTransparency = 0.5
+frame.BorderSizePixel = 0
+frame.Parent = gui
+
+-- Title
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 40)
+title.Position = UDim2.new(0, 0, 0, 20)
+title.BackgroundTransparency = 1
+title.Text = "Enter Key"
+title.Font = Enum.Font.Gotham
+title.TextSize = 20
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Parent = frame
+
+-- Key input
+local input = Instance.new("TextBox")
+input.Size = UDim2.new(0, 300, 0, 40)
+input.Position = UDim2.new(0.5, 0, 0, 75)
+input.AnchorPoint = Vector2.new(0.5, 0)
+input.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+input.BackgroundTransparency = 0.8
+input.BorderSizePixel = 0
+input.Text = ""
+input.PlaceholderText = "Key..."
+input.Font = Enum.Font.Gotham
+input.TextSize = 16
+input.TextColor3 = Color3.fromRGB(255, 255, 255)
+input.PlaceholderColor3 = Color3.fromRGB(200, 200, 200)
+input.ClearTextOnFocus = false
+input.Parent = frame
+
+-- Status label
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, 0, 0, 30)
+status.Position = UDim2.new(0, 0, 0, 130)
+status.BackgroundTransparency = 1
+status.Text = ""
+status.Font = Enum.Font.Gotham
+status.TextSize = 14
+status.TextColor3 = Color3.fromRGB(255, 255, 255)
+status.Parent = frame
+
+-- Load main system with entered key
+local function submitKey()
+    local key = input.Text:gsub("%s+", "") -- Remove spaces
+    
+    if key == "" then
+        status.Text = "Please enter a key"
+        status.TextColor3 = Color3.fromRGB(255, 200, 100)
+        return
+    end
+    
+    status.Text = "Checking key..."
+    status.TextColor3 = Color3.fromRGB(200, 200, 200)
+    input.TextEditable = false
+    
+    -- Download main system
+    local success, result = pcall(function()
+        return game:HttpGet(MAIN_SYSTEM_URL)
+    end)
+    
+    if success then
+        -- Store the entered key globally so main system can access it
+        _G.EuvaEnteredKey = key
+        
+        local loadFunc = loadstring(result)
+        if loadFunc then
+            print("✅ Main system loaded")
+            
+            -- Show verified message
+            status.Text = "✅ Verified!"
+            status.TextColor3 = Color3.fromRGB(100, 255, 100)
+            
+            task.spawn(function()
+                local TweenService = game:GetService("TweenService")
+                
+                -- Phase 1: Brief pause (stay centered)
+                task.wait(0.3)
+                
+                -- Phase 2: Fold to right (width collapse while staying centered vertically)
+                local foldRight = TweenService:Create(frame, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+                    Size = UDim2.new(0, 80, 0, 180),
+                    Position = UDim2.new(1, -40, 0.5, 0)
+                })
+                foldRight:Play()
+                task.wait(0.4)
+                
+                -- Phase 3: Collapse down (height shrinks)
+                local collapseDown = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                    Size = UDim2.new(0, 80, 0, 0),
+                    Position = UDim2.new(1, -40, 0.5, 0)
+                })
+                collapseDown:Play()
+                task.wait(0.3)
+                
+                -- Phase 4: Final shrink and fade (disappear completely)
+                local disappear = TweenService:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                    Size = UDim2.new(0, 0, 0, 0),
+                    BackgroundTransparency = 1
+                })
+                
+                -- Fade all children too
+                for _, child in pairs(frame:GetDescendants()) do
+                    if child:IsA("GuiObject") then
+                        TweenService:Create(child, TweenInfo.new(0.2, Enum.EasingStyle.Linear), {
+                            BackgroundTransparency = 1,
+                            TextTransparency = 1
+                        }):Play()
+                    end
+                end
+                
+                disappear:Play()
+                task.wait(0.2)
+                
+                -- Delete GUI
+                gui:Destroy()
+            end)
+            
+            -- Load main system after short delay
+            task.wait(0.4)
+            loadFunc()
+        else
+            warn("❌ Failed to execute main system")
+            status.Text = "System error"
+            status.TextColor3 = Color3.fromRGB(255, 100, 100)
+            input.TextEditable = true
+        end
+    else
+        warn("❌ Failed to download main system:", result)
+        status.Text = "Connection error"
+        status.TextColor3 = Color3.fromRGB(255, 100, 100)
+        input.TextEditable = true
+    end
+end
+
+-- Enter key to submit
+input.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        submitKey()
+    end
+end)
+
+print("🔑 Euva Key System loaded")
