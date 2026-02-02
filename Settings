@@ -32,8 +32,8 @@ function SettingsModule.CreateUI(parent)
     -- APPEARANCE Section
     local appearanceSection = Components.CreateSection(parent, "APPEARANCE")
     
-    -- GUI Transparency slider
-    Components.CreateSlider(appearanceSection, "GUI Transparency", 40, 0, 100, function(value)
+    -- GUI Transparency slider (default 10%)
+    Components.CreateSlider(appearanceSection, "GUI Transparency", 10, 0, 100, function(value)
         if SettingsModule.Layout and SettingsModule.Layout.SetGuiTransparency then
             SettingsModule.Layout.SetGuiTransparency(value / 100)
         end
@@ -81,7 +81,7 @@ function SettingsModule.CreateUI(parent)
     local keybindsSection = Components.CreateSection(parent, "KEYBINDS")
     
     local keybindData = {
-        {"Right Alt", "Toggle GUI visibility"},
+        {"Right Shift", "Toggle GUI visibility"},
         {"Drag Toggle", "Enable/disable dragging parts (Misc tab)"},
     }
     
