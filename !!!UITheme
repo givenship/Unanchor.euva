@@ -1,0 +1,40 @@
+-- Euva Theme Module
+-- Color palette and asset configuration
+
+local Theme = {}
+
+Theme.Colors = {
+    Base = Color3.fromRGB(248, 232, 237),
+    Text = Color3.fromRGB(60, 50, 55),
+    TextMuted = Color3.fromRGB(100, 90, 95),
+    Soft = Color3.fromRGB(240, 220, 230),
+    SoftHover = Color3.fromRGB(235, 210, 220),
+    SliderBg = Color3.fromRGB(235, 215, 225),
+    SliderFill = Color3.fromRGB(220, 190, 210),
+    SliderKnob = Color3.fromRGB(210, 180, 200),
+    Line = Color3.fromRGB(255, 255, 255),
+    Discord = Color3.fromRGB(88, 101, 242),
+}
+
+Theme.Assets = {
+    TreeL = "rbxassetid://97762968859118",
+    TreeR = "rbxassetid://137672331508230",
+    LArrow = "rbxassetid://85796063517484",
+    RArrow = "rbxassetid://90725829162539",
+    RightSmallArrow = "rbxassetid://18844674",
+    Logo = "rbxassetid://93026898541845",
+    MoveIcon = "rbxassetid://1467771388",
+    Eye = "rbxassetid://117113193301064",
+    Wing = "rbxassetid://131942306305044",
+}
+
+Theme.Config = {
+    DiscordInvite = "https://discord.gg/Wzmz9u99Hf",
+    GuiSize = {Width = 800, Height = 500},
+    SidebarWidth = 180,
+    HeaderHeight = 60,
+    DefaultGuiTransparency = 0.4,
+    DefaultDecoTransparency = 0.8,
+}
+
+return Theme
