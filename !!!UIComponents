@@ -1,5 +1,5 @@
--- Euva UI Components Module
--- Reusable UI elements
+-- Euva UI Components Module (Compressed)
+-- ui() helper + reusable components
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -8,30 +8,59 @@ local StarterGui = game:GetService("StarterGui")
 local Components = {}
 Components.Theme = nil -- Set by Main
 
-local function tween(obj, info, props)
+------------------------------------------
+-- CORE HELPER: ui() instance creator
+------------------------------------------
+function Components.ui(className, props, children)
+    local inst = Instance.new(className)
+    for k, v in pairs(props or {}) do
+        if k ~= "Parent" then
+            inst[k] = v
+        end
+    end
+    if children then
+        for _, child in ipairs(children) do
+            child.Parent = inst
+        end
+    end
+    if props and props.Parent then
+        inst.Parent = props.Parent
+    end
+    return inst
+end
+
+local ui = Components.ui
+
+------------------------------------------
+-- TWEEN HELPERS
+------------------------------------------
+function Components.Tween(obj, info, props)
     local t = TweenService:Create(obj, info, props)
+    t:Play()
+    return t
+end
+
+local function tween(obj, time, props, style, dir)
+    style = style or Enum.EasingStyle.Quad
+    dir = dir or Enum.EasingDirection.Out
+    local t = TweenService:Create(obj, TweenInfo.new(time, style, dir), props)
     t:Play()
     return t
 end
 
 local function pop(button)
     local orig = button.Size
-    tween(button, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        Size = UDim2.new(orig.X.Scale, orig.X.Offset - 6, orig.Y.Scale, orig.Y.Offset - 4)
-    })
+    tween(button, 0.08, {Size = UDim2.new(orig.X.Scale, orig.X.Offset - 6, orig.Y.Scale, orig.Y.Offset - 4)})
     task.wait(0.08)
-    tween(button, TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        Size = orig
-    })
+    tween(button, 0.10, {Size = orig})
 end
 
+------------------------------------------
+-- UTILITIES
+------------------------------------------
 function Components.Notify(txt)
     pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "EUVA",
-            Text = txt,
-            Duration = 2
-        })
+        StarterGui:SetCore("SendNotification", {Title = "EUVA", Text = txt, Duration = 2})
     end)
 end
 
@@ -44,83 +73,83 @@ function Components.TryClipboard(str)
     return false
 end
 
-function Components.Tween(obj, info, props)
-    return tween(obj, info, props)
+------------------------------------------
+-- PRESET APPLIER (merges theme preset)
+------------------------------------------
+local function applyPreset(preset, props)
+    if not Components.Theme then return props or {} end
+    return Components.Theme.Apply(preset, props)
 end
+
+------------------------------------------
+-- COMPONENTS
+------------------------------------------
 
 function Components.CreateSection(parent, title)
     local THEME = Components.Theme.Colors
     
-    local s = Instance.new("Frame")
-    s.BackgroundTransparency = 1
-    s.Size = UDim2.new(1, 0, 0, 0)
-    s.AutomaticSize = Enum.AutomaticSize.Y
-    s.ZIndex = 25
-    s.Parent = parent
-
-    local l = Instance.new("UIListLayout")
-    l.Padding = UDim.new(0, 8)
-    l.SortOrder = Enum.SortOrder.LayoutOrder
-    l.Parent = s
-
+    local s = ui("Frame", applyPreset("Container", {
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        ZIndex = 25,
+        Parent = parent,
+    }), {
+        ui("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder})
+    })
+    
     if title then
-        local t = Instance.new("TextLabel")
-        t.BackgroundTransparency = 1
-        t.Size = UDim2.new(1, 0, 0, 24)
-        t.Text = title
-        t.Font = Enum.Font.GothamBold
-        t.TextSize = 15
-        t.TextColor3 = THEME.Text
-        t.TextXAlignment = Enum.TextXAlignment.Left
-        t.ZIndex = 26
-        t.Parent = s
+        ui("TextLabel", applyPreset("LabelBold", {
+            Size = UDim2.new(1, 0, 0, 24),
+            Text = title,
+            TextSize = 15,
+            TextColor3 = THEME.Text,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 26,
+            Parent = s,
+        }))
     end
     return s
 end
 
-function Components.CreateLabel(parent, txt)
+function Components.CreateLabel(parent, txt, muted)
     local THEME = Components.Theme.Colors
+    local preset = muted and "LabelMuted" or "Label"
     
-    local lb = Instance.new("TextLabel")
-    lb.BackgroundTransparency = 1
-    lb.Size = UDim2.new(1, 0, 0, 20)
-    lb.Text = txt
-    lb.Font = Enum.Font.Gotham
-    lb.TextSize = 13
-    lb.TextColor3 = Color3.fromRGB(80, 70, 75)
-    lb.TextXAlignment = Enum.TextXAlignment.Left
-    lb.ZIndex = 26
-    lb.Parent = parent
-    return lb
+    return ui("TextLabel", applyPreset(preset, {
+        Size = UDim2.new(1, 0, 0, 20),
+        Text = txt,
+        TextColor3 = muted and THEME.TextMuted or THEME.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 26,
+        Parent = parent,
+    }))
 end
 
-function Components.CreateButton(parent, txt, cb)
+function Components.CreateButton(parent, txt, cb, primary)
     local THEME = Components.Theme.Colors
+    local preset = primary and "ButtonPrimary" or "Button"
+    local bgColor = primary and THEME.Discord or THEME.Soft
+    local textColor = primary and Color3.fromRGB(255,255,255) or THEME.Text
+    local hoverColor = primary and Color3.fromRGB(98, 111, 252) or THEME.SoftHover
     
-    local b = Instance.new("TextButton")
-    b.Size = UDim2.fromOffset(160, 36)
-    b.BackgroundColor3 = THEME.Soft
-    b.BorderSizePixel = 0
-    b.AutoButtonColor = false
-    b.Text = txt
-    b.Font = Enum.Font.Gotham
-    b.TextSize = 13
-    b.TextColor3 = THEME.Text
-    b.ZIndex = 26
-    b.Parent = parent
-
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, 6)
-    c.Parent = b
-
-    b.MouseEnter:Connect(function() b.BackgroundColor3 = THEME.SoftHover end)
-    b.MouseLeave:Connect(function() b.BackgroundColor3 = THEME.Soft end)
-
+    local b = ui("TextButton", applyPreset(preset, {
+        Size = UDim2.fromOffset(160, 36),
+        BackgroundColor3 = bgColor,
+        Text = txt,
+        TextColor3 = textColor,
+        ZIndex = 26,
+        Parent = parent,
+    }), {
+        ui("UICorner", {CornerRadius = UDim.new(0, 6)})
+    })
+    
+    b.MouseEnter:Connect(function() b.BackgroundColor3 = hoverColor end)
+    b.MouseLeave:Connect(function() b.BackgroundColor3 = bgColor end)
     b.MouseButton1Click:Connect(function()
         pop(b)
         if cb then cb() end
     end)
-
+    
     return b
 end
 
@@ -128,56 +157,48 @@ function Components.CreateToggle(parent, txt, default, cb)
     local THEME = Components.Theme.Colors
     local enabled = default or false
     
-    local container = Instance.new("Frame")
-    container.BackgroundTransparency = 1
-    container.Size = UDim2.new(1, 0, 0, 36)
-    container.ZIndex = 26
-    container.Parent = parent
+    local container = ui("Frame", applyPreset("Container", {
+        Size = UDim2.new(1, 0, 0, 36),
+        ZIndex = 26,
+        Parent = parent,
+    }))
     
-    local toggle = Instance.new("TextButton")
-    toggle.Size = UDim2.fromOffset(50, 26)
-    toggle.Position = UDim2.new(0, 0, 0, 5)
-    toggle.BackgroundColor3 = enabled and THEME.SliderFill or THEME.SliderBg
-    toggle.BorderSizePixel = 0
-    toggle.Text = ""
-    toggle.ZIndex = 27
-    toggle.Parent = container
+    local toggle = ui("TextButton", {
+        Size = UDim2.fromOffset(50, 26),
+        Position = UDim2.new(0, 0, 0, 5),
+        BackgroundColor3 = enabled and THEME.SliderFill or THEME.SliderBg,
+        BorderSizePixel = 0,
+        Text = "",
+        ZIndex = 27,
+        Parent = container,
+    }, {
+        ui("UICorner", {CornerRadius = UDim.new(0, 13)})
+    })
     
-    local tc = Instance.new("UICorner")
-    tc.CornerRadius = UDim.new(0, 13)
-    tc.Parent = toggle
+    local knob = ui("Frame", {
+        Size = UDim2.fromOffset(20, 20),
+        Position = enabled and UDim2.new(1, -23, 0, 3) or UDim2.new(0, 3, 0, 3),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        ZIndex = 28,
+        Parent = toggle,
+    }, {
+        ui("UICorner", {CornerRadius = UDim.new(1, 0)})
+    })
     
-    local knob = Instance.new("Frame")
-    knob.Size = UDim2.fromOffset(20, 20)
-    knob.Position = enabled and UDim2.new(1, -23, 0, 3) or UDim2.new(0, 3, 0, 3)
-    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    knob.ZIndex = 28
-    knob.Parent = toggle
-    
-    local kc = Instance.new("UICorner")
-    kc.CornerRadius = UDim.new(1, 0)
-    kc.Parent = knob
-    
-    local label = Instance.new("TextLabel")
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, -60, 1, 0)
-    label.Position = UDim2.new(0, 60, 0, 0)
-    label.Text = txt
-    label.Font = Enum.Font.Gotham
-    label.TextSize = 13
-    label.TextColor3 = THEME.Text
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.ZIndex = 26
-    label.Parent = container
+    ui("TextLabel", applyPreset("Label", {
+        Size = UDim2.new(1, -60, 1, 0),
+        Position = UDim2.new(0, 60, 0, 0),
+        Text = txt,
+        TextColor3 = THEME.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 26,
+        Parent = container,
+    }))
     
     toggle.MouseButton1Click:Connect(function()
         enabled = not enabled
-        tween(toggle, TweenInfo.new(0.15), {
-            BackgroundColor3 = enabled and THEME.SliderFill or THEME.SliderBg
-        })
-        tween(knob, TweenInfo.new(0.15), {
-            Position = enabled and UDim2.new(1, -23, 0, 3) or UDim2.new(0, 3, 0, 3)
-        })
+        tween(toggle, 0.15, {BackgroundColor3 = enabled and THEME.SliderFill or THEME.SliderBg})
+        tween(knob, 0.15, {Position = enabled and UDim2.new(1, -23, 0, 3) or UDim2.new(0, 3, 0, 3)})
         if cb then cb(enabled) end
     end)
     
@@ -186,84 +207,64 @@ end
 
 function Components.CreateSlider(parent, title, default, min, max, onChange)
     local THEME = Components.Theme.Colors
-    min = min or 0
-    max = max or 1
+    min, max = min or 0, max or 1
     default = default or min
     
     local sec = Components.CreateSection(parent, nil)
-    
     local normalized = (default - min) / (max - min)
     local valueLabel = Components.CreateLabel(sec, title .. ": " .. math.floor(default) .. (max <= 1 and "%" or ""))
-
-    local slider = Instance.new("Frame")
-    slider.Size = UDim2.new(1, -20, 0, 30)
-    slider.BackgroundColor3 = THEME.SliderBg
-    slider.BorderSizePixel = 0
-    slider.ZIndex = 26
-    slider.Parent = sec
-
-    local sc = Instance.new("UICorner")
-    sc.CornerRadius = UDim.new(0, 6)
-    sc.Parent = slider
-
-    local fill = Instance.new("Frame")
-    fill.Size = UDim2.new(normalized, 0, 1, 0)
-    fill.BackgroundColor3 = THEME.SliderFill
-    fill.BorderSizePixel = 0
-    fill.ZIndex = 27
-    fill.Parent = slider
-
-    local fc = Instance.new("UICorner")
-    fc.CornerRadius = UDim.new(0, 6)
-    fc.Parent = fill
-
-    local knob = Instance.new("TextButton")
-    knob.Size = UDim2.fromOffset(20, 20)
-    knob.Position = UDim2.new(1, -10, 0.5, -10)
-    knob.AnchorPoint = Vector2.new(1, 0)
-    knob.BackgroundColor3 = THEME.SliderKnob
-    knob.BorderSizePixel = 0
-    knob.Text = ""
-    knob.ZIndex = 28
-    knob.Parent = fill
-
-    local kc = Instance.new("UICorner")
-    kc.CornerRadius = UDim.new(1, 0)
-    kc.Parent = knob
-
+    
+    local slider = ui("Frame", {
+        Size = UDim2.new(1, -20, 0, 30),
+        BackgroundColor3 = THEME.SliderBg,
+        BorderSizePixel = 0,
+        ZIndex = 26,
+        Parent = sec,
+    }, {
+        ui("UICorner", {CornerRadius = UDim.new(0, 6)})
+    })
+    
+    local fill = ui("Frame", {
+        Size = UDim2.new(normalized, 0, 1, 0),
+        BackgroundColor3 = THEME.SliderFill,
+        BorderSizePixel = 0,
+        ZIndex = 27,
+        Parent = slider,
+    }, {
+        ui("UICorner", {CornerRadius = UDim.new(0, 6)})
+    })
+    
+    local knob = ui("TextButton", {
+        Size = UDim2.fromOffset(20, 20),
+        Position = UDim2.new(1, -10, 0.5, -10),
+        AnchorPoint = Vector2.new(1, 0),
+        BackgroundColor3 = THEME.SliderKnob,
+        BorderSizePixel = 0,
+        Text = "",
+        ZIndex = 28,
+        Parent = fill,
+    }, {
+        ui("UICorner", {CornerRadius = UDim.new(1, 0)})
+    })
+    
     local dragging = false
-
-    knob.MouseButton1Down:Connect(function()
-        dragging = true
-    end)
-
+    
+    knob.MouseButton1Down:Connect(function() dragging = true end)
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
     end)
-
+    
     UserInputService.InputChanged:Connect(function(input)
-        if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-        if not dragging then return end
-
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement or not dragging then return end
         local mouseX = UserInputService:GetMouseLocation().X
-        local x0 = slider.AbsolutePosition.X
-        local w = slider.AbsoluteSize.X
-        local rel = math.clamp((mouseX - x0) / w, 0, 1)
+        local rel = math.clamp((mouseX - slider.AbsolutePosition.X) / slider.AbsoluteSize.X, 0, 1)
         local value = min + (max - min) * rel
-
+        
         fill.Size = UDim2.new(rel, 0, 1, 0)
-        
-        if max <= 1 then
-            valueLabel.Text = title .. ": " .. math.floor(rel * 100) .. "%"
-        else
-            valueLabel.Text = title .. ": " .. math.floor(value)
-        end
-        
+        valueLabel.Text = title .. ": " .. (max <= 1 and math.floor(rel * 100) .. "%" or math.floor(value))
         if onChange then onChange(value) end
     end)
-
+    
     if onChange then onChange(default) end
     return sec
 end
@@ -273,67 +274,59 @@ function Components.CreateDropdown(parent, title, options, default, onChange)
     local selected = default or options[1]
     local expanded = false
     
-    local container = Instance.new("Frame")
-    container.BackgroundTransparency = 1
-    container.Size = UDim2.new(1, 0, 0, 36)
-    container.ClipsDescendants = false
-    container.ZIndex = 30
-    container.Parent = parent
+    local container = ui("Frame", applyPreset("Container", {
+        Size = UDim2.new(1, 0, 0, 36),
+        ClipsDescendants = false,
+        ZIndex = 30,
+        Parent = parent,
+    }))
     
-    local label = Instance.new("TextLabel")
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(0, 100, 0, 36)
-    label.Text = title .. ":"
-    label.Font = Enum.Font.Gotham
-    label.TextSize = 13
-    label.TextColor3 = THEME.Text
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.ZIndex = 30
-    label.Parent = container
+    ui("TextLabel", applyPreset("Label", {
+        Size = UDim2.new(0, 100, 0, 36),
+        Text = title .. ":",
+        TextColor3 = THEME.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 30,
+        Parent = container,
+    }))
     
-    local dropBtn = Instance.new("TextButton")
-    dropBtn.Size = UDim2.new(1, -110, 0, 32)
-    dropBtn.Position = UDim2.new(0, 105, 0, 2)
-    dropBtn.BackgroundColor3 = THEME.Soft
-    dropBtn.BorderSizePixel = 0
-    dropBtn.Text = selected .. " ▼"
-    dropBtn.Font = Enum.Font.Gotham
-    dropBtn.TextSize = 12
-    dropBtn.TextColor3 = THEME.Text
-    dropBtn.ZIndex = 31
-    dropBtn.Parent = container
+    local dropBtn = ui("TextButton", applyPreset("Button", {
+        Size = UDim2.new(1, -110, 0, 32),
+        Position = UDim2.new(0, 105, 0, 2),
+        BackgroundColor3 = THEME.Soft,
+        Text = selected .. " ▼",
+        TextSize = 12,
+        TextColor3 = THEME.Text,
+        ZIndex = 31,
+        Parent = container,
+    }), {
+        ui("UICorner", {CornerRadius = UDim.new(0, 6)})
+    })
     
-    local dc = Instance.new("UICorner")
-    dc.CornerRadius = UDim.new(0, 6)
-    dc.Parent = dropBtn
-    
-    local optionFrame = Instance.new("Frame")
-    optionFrame.Size = UDim2.new(1, -110, 0, #options * 28)
-    optionFrame.Position = UDim2.new(0, 105, 0, 36)
-    optionFrame.BackgroundColor3 = THEME.Soft
-    optionFrame.BorderSizePixel = 0
-    optionFrame.Visible = false
-    optionFrame.ZIndex = 100
-    optionFrame.Parent = container
-    
-    local oc = Instance.new("UICorner")
-    oc.CornerRadius = UDim.new(0, 6)
-    oc.Parent = optionFrame
-    
-    local ol = Instance.new("UIListLayout")
-    ol.SortOrder = Enum.SortOrder.LayoutOrder
-    ol.Parent = optionFrame
+    local optionFrame = ui("Frame", {
+        Size = UDim2.new(1, -110, 0, #options * 28),
+        Position = UDim2.new(0, 105, 0, 36),
+        BackgroundColor3 = THEME.Soft,
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 100,
+        Parent = container,
+    }, {
+        ui("UICorner", {CornerRadius = UDim.new(0, 6)}),
+        ui("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder})
+    })
     
     for _, opt in ipairs(options) do
-        local optBtn = Instance.new("TextButton")
-        optBtn.Size = UDim2.new(1, 0, 0, 28)
-        optBtn.BackgroundTransparency = 1
-        optBtn.Text = opt
-        optBtn.Font = Enum.Font.Gotham
-        optBtn.TextSize = 12
-        optBtn.TextColor3 = THEME.Text
-        optBtn.ZIndex = 101
-        optBtn.Parent = optionFrame
+        local optBtn = ui("TextButton", {
+            Size = UDim2.new(1, 0, 0, 28),
+            BackgroundTransparency = 1,
+            Text = opt,
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            TextColor3 = THEME.Text,
+            ZIndex = 101,
+            Parent = optionFrame,
+        })
         
         optBtn.MouseButton1Click:Connect(function()
             selected = opt
@@ -350,6 +343,32 @@ function Components.CreateDropdown(parent, title, options, default, onChange)
     end)
     
     return container
+end
+
+------------------------------------------
+-- CARD COMPONENT (new)
+------------------------------------------
+function Components.CreateCard(parent, props)
+    local THEME = Components.Theme.Colors
+    props = props or {}
+    
+    return ui("Frame", {
+        Size = props.Size or UDim2.new(1, 0, 0, 100),
+        Position = props.Position,
+        BackgroundColor3 = props.Color or THEME.Card,
+        BackgroundTransparency = props.Transparency or 0,
+        BorderSizePixel = 0,
+        ZIndex = props.ZIndex or 25,
+        Parent = parent,
+    }, {
+        ui("UICorner", {CornerRadius = UDim.new(0, props.Radius or 12)}),
+        ui("UIPadding", {
+            PaddingLeft = UDim.new(0, props.Padding or 16),
+            PaddingRight = UDim.new(0, props.Padding or 16),
+            PaddingTop = UDim.new(0, props.Padding or 16),
+            PaddingBottom = UDim.new(0, props.Padding or 16),
+        })
+    })
 end
 
 return Components
