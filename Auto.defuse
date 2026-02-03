@@ -1,255 +1,242 @@
--- Auto Defuse Module (Fixed)
--- Automatically defuses bombs when in range
--- FIX: Improved bomb detection and circle visibility
-
-print("v1")
+-- Auto Defuse Module
+-- Detects bomb plant animations from other players and auto-clicks to defuse
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
-local AutoDefuseControl = {}
-local defuseConnection = nil
-local circleConnection = nil
-local detectionCircles = {}
+-- Animation IDs to detect (bomb planting animations)
+local TARGET_ANIMATIONS = {
+    ["99918936475651"] = true,
+    ["115241304811827"] = true,
+    ["rbxassetid://99918936475651"] = true,
+    ["rbxassetid://115241304811827"] = true,
+}
 
--- Initialize settings if not exists
+-- Initialize settings
 if not getgenv().AutoDefuseSettings then
     getgenv().AutoDefuseSettings = {
         Enabled = false,
-        Delay = 3000,
+        Delay = 3000, -- ms
         ShowCircle = true,
         DetectionRadius = 30
     }
 end
 
-local function worldToScreen(position)
-    local screenPos, onScreen = Camera:WorldToViewportPoint(position)
-    return Vector2.new(screenPos.X, screenPos.Y), onScreen, screenPos.Z
-end
+local AutoDefuse = {}
+local mainLoop = nil
+local circleDrawing = nil
+local playerIndicators = {} -- circles for each player
+local detectedPlayers = {} -- tracks players currently playing target animation
+local clickCooldown = {}
 
-local function createCircle()
+-- Create circle drawing
+local function createCircle(radius, thickness, filled)
     local circle = Drawing.new("Circle")
-    circle.Thickness = 2
-    circle.Color = Color3.fromRGB(255, 100, 100)
-    circle.Filled = false
-    circle.Transparency = 0.3
+    circle.Radius = radius or 100
+    circle.Thickness = thickness or 2
+    circle.Filled = filled or false
+    circle.Transparency = 0.5
     circle.Visible = false
+    circle.NumSides = 64
     return circle
 end
 
--- Find all bombs in workspace
-local function findBombs()
-    local bombs = {}
+-- Get local player root
+local function getLocalRoot()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart")
+end
+
+-- Get other player root
+local function getPlayerRoot(player)
+    local char = player.Character
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart")
+end
+
+-- World to screen
+local function toScreen(pos)
+    local screen, onScreen = Camera:WorldToViewportPoint(pos)
+    return Vector2.new(screen.X, screen.Y), onScreen, screen.Z
+end
+
+-- Check if player is on Monsters team
+local function isMonsters(player)
+    if not player.Team then return false end
+    local teamName = player.Team.Name:lower()
+    return teamName:find("Monsters") ~= nil
+end
+
+-- Check if player is playing target animation
+local function isPlayingTargetAnimation(player)
+    local char = player.Character
+    if not char then return false end
     
-    -- Search common bomb locations
-    local searchLocations = {
-        Workspace:FindFirstChild("Bombs"),
-        Workspace:FindFirstChild("Map"),
-        Workspace:FindFirstChild("Objects"),
-        Workspace
-    }
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return false end
     
-    -- Common bomb names to search for
-    local bombNames = {"Bomb", "PlantedBomb", "C4", "Explosive", "TimeBomb", "BombPart"}
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then return false end
     
-    for _, location in ipairs(searchLocations) do
-        if location then
-            for _, obj in pairs(location:GetDescendants()) do
-                -- Check by name
-                for _, bombName in ipairs(bombNames) do
-                    if obj.Name:lower():find(bombName:lower()) then
-                        if obj:IsA("BasePart") or obj:IsA("Model") then
-                            table.insert(bombs, obj)
-                            break
-                        end
-                    end
-                end
-                
-                -- Check for ClickDetector (bombs usually have this)
-                if obj:IsA("ClickDetector") then
-                    local parent = obj.Parent
-                    if parent and (parent:IsA("BasePart") or parent:IsA("Model")) then
-                        -- Check if it looks like a bomb
-                        local isLikelyBomb = false
-                        for _, bombName in ipairs(bombNames) do
-                            if parent.Name:lower():find(bombName:lower()) then
-                                isLikelyBomb = true
-                                break
-                            end
-                        end
-                        -- Also add if parent has certain attributes
-                        if parent:FindFirstChild("Fuse") or parent:FindFirstChild("Timer") or parent:FindFirstChild("Countdown") then
-                            isLikelyBomb = true
-                        end
-                        if isLikelyBomb then
-                            table.insert(bombs, parent)
-                        end
-                    end
-                end
-                
-                -- Check for ProximityPrompt (some games use this)
-                if obj:IsA("ProximityPrompt") then
-                    local parent = obj.Parent
-                    if parent then
-                        for _, bombName in ipairs(bombNames) do
-                            if parent.Name:lower():find(bombName:lower()) or 
-                               obj.ActionText:lower():find("defuse") or
-                               obj.ObjectText:lower():find("bomb") then
-                                table.insert(bombs, parent)
-                                break
-                            end
-                        end
-                    end
-                end
+    -- Check all playing animation tracks
+    for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+        local animation = track.Animation
+        if animation then
+            local animId = animation.AnimationId
+            -- Check raw ID
+            if TARGET_ANIMATIONS[animId] then
+                return true
             end
-        end
-    end
-    
-    -- Remove duplicates
-    local unique = {}
-    local seen = {}
-    for _, bomb in ipairs(bombs) do
-        if not seen[bomb] then
-            seen[bomb] = true
-            table.insert(unique, bomb)
-        end
-    end
-    
-    return unique
-end
-
-local function getBombPosition(bomb)
-    if bomb:IsA("BasePart") then
-        return bomb.Position
-    elseif bomb:IsA("Model") then
-        if bomb.PrimaryPart then
-            return bomb.PrimaryPart.Position
-        end
-        local part = bomb:FindFirstChildWhichIsA("BasePart")
-        if part then
-            return part.Position
-        end
-    end
-    return nil
-end
-
-local function getDistanceToBomb(bomb)
-    local character = LocalPlayer.Character
-    if not character then return math.huge end
-    
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return math.huge end
-    
-    local bombPos = getBombPosition(bomb)
-    if not bombPos then return math.huge end
-    
-    return (rootPart.Position - bombPos).Magnitude
-end
-
-local function tryDefuseBomb(bomb)
-    -- Try ClickDetector
-    local clickDetector = bomb:FindFirstChildWhichIsA("ClickDetector", true)
-    if clickDetector then
-        pcall(function()
-            fireclickdetector(clickDetector)
-        end)
-        return true
-    end
-    
-    -- Try ProximityPrompt
-    local proximityPrompt = bomb:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if proximityPrompt then
-        pcall(function()
-            fireproximityprompt(proximityPrompt)
-        end)
-        return true
-    end
-    
-    -- Try firing remote events
-    local remotes = {"DefuseBomb", "Defuse", "DisarmBomb", "Disarm"}
-    for _, remoteName in ipairs(remotes) do
-        local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
-        if remote and remote:IsA("RemoteEvent") then
-            pcall(function()
-                remote:FireServer(bomb)
-            end)
-            return true
+            -- Extract number from rbxassetid://
+            local numId = animId:match("%d+")
+            if numId and TARGET_ANIMATIONS[numId] then
+                return true
+            end
         end
     end
     
     return false
 end
 
-local function updateCircles()
-    -- Clear old circles
-    for _, circle in pairs(detectionCircles) do
-        pcall(function() circle:Remove() end)
+-- Perform left click
+local function doLeftClick()
+    pcall(function()
+        -- Method 1: VirtualInputManager
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+        task.wait(0.05)
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+    end)
+    
+    -- Method 2: mouse1click if available
+    pcall(function()
+        if mouse1click then
+            mouse1click()
+        end
+    end)
+end
+
+-- Get distance between local player and another player
+local function getDistanceToPlayer(player)
+    local localRoot = getLocalRoot()
+    local otherRoot = getPlayerRoot(player)
+    if not localRoot or not otherRoot then return math.huge end
+    return (localRoot.Position - otherRoot.Position).Magnitude
+end
+
+-- Clear all drawings
+local function clearDrawings()
+    if circleDrawing then
+        pcall(function() circleDrawing:Remove() end)
+        circleDrawing = nil
     end
-    detectionCircles = {}
+    for _, indicator in pairs(playerIndicators) do
+        pcall(function() indicator:Remove() end)
+    end
+    playerIndicators = {}
+end
+
+-- Update detection circle on local player
+local function updateDetectionCircle()
+    if not getgenv().AutoDefuseSettings.ShowCircle then
+        if circleDrawing then
+            circleDrawing.Visible = false
+        end
+        return
+    end
     
-    if not getgenv().AutoDefuseSettings.ShowCircle then return end
-    if not getgenv().AutoDefuseSettings.Enabled then return end
+    local localRoot = getLocalRoot()
+    if not localRoot then
+        if circleDrawing then circleDrawing.Visible = false end
+        return
+    end
     
-    local bombs = findBombs()
+    -- Create circle if needed
+    if not circleDrawing then
+        circleDrawing = createCircle(100, 3, false)
+    end
+    
     local radius = getgenv().AutoDefuseSettings.DetectionRadius
     
-    for _, bomb in ipairs(bombs) do
-        local bombPos = getBombPosition(bomb)
-        if bombPos then
-            local screenPos, onScreen, depth = worldToScreen(bombPos)
-            
-            if onScreen and depth > 0 then
-                local circle = createCircle()
-                
-                -- Calculate screen radius based on distance
-                local scaleFactor = 1000 / math.max(depth, 1)
-                local screenRadius = math.clamp(radius * scaleFactor, 20, 200)
-                
-                circle.Position = screenPos
-                circle.Radius = screenRadius
-                circle.Visible = true
-                
-                -- Change color based on distance
-                local distance = getDistanceToBomb(bomb)
-                if distance <= radius then
-                    circle.Color = Color3.fromRGB(0, 255, 0) -- Green when in range
-                else
-                    circle.Color = Color3.fromRGB(255, 100, 100) -- Red when out of range
+    -- Position circle at local player's feet
+    local feetPos = localRoot.Position - Vector3.new(0, 3, 0)
+    local screenPos, onScreen, depth = toScreen(feetPos)
+    
+    if onScreen and depth > 0 then
+        -- Scale radius to screen
+        local scale = 1000 / math.max(depth, 1)
+        local screenRadius = math.clamp(radius * scale, 30, 300)
+        
+        circleDrawing.Position = screenPos
+        circleDrawing.Radius = screenRadius
+        circleDrawing.Visible = true
+        
+        -- Check if any valid player is in range
+        local anyInRange = false
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and not isMonsters(player) then
+                local dist = getDistanceToPlayer(player)
+                if dist <= radius then
+                    anyInRange = true
+                    break
                 end
-                
-                table.insert(detectionCircles, circle)
             end
         end
+        
+        -- Color: Green if player in range, Red if not
+        if anyInRange then
+            circleDrawing.Color = Color3.fromRGB(0, 255, 0)
+        else
+            circleDrawing.Color = Color3.fromRGB(255, 80, 80)
+        end
+    else
+        circleDrawing.Visible = false
     end
 end
 
-local function defuseLoop()
-    local bombs = findBombs()
-    local radius = getgenv().AutoDefuseSettings.DetectionRadius
-    local delay = getgenv().AutoDefuseSettings.Delay / 1000 -- Convert to seconds
+-- Update player indicators
+local function updatePlayerIndicators()
+    -- Clear old indicators
+    for _, indicator in pairs(playerIndicators) do
+        pcall(function() indicator:Remove() end)
+    end
+    playerIndicators = {}
     
-    for _, bomb in ipairs(bombs) do
-        local distance = getDistanceToBomb(bomb)
-        
-        if distance <= radius then
-            -- Wait for delay before defusing
-            if delay > 0 then
-                task.wait(delay)
-            end
-            
-            -- Check if still in range and enabled
-            if getgenv().AutoDefuseSettings.Enabled then
-                local newDistance = getDistanceToBomb(bomb)
-                if newDistance <= radius then
-                    local success = tryDefuseBomb(bomb)
-                    if success then
-                        print("[AutoDefuse] Defused bomb at distance:", math.floor(newDistance))
+    if not getgenv().AutoDefuseSettings.ShowCircle then return end
+    
+    local radius = getgenv().AutoDefuseSettings.DetectionRadius
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and not isMonsters(player) then
+            local otherRoot = getPlayerRoot(player)
+            if otherRoot then
+                local screenPos, onScreen, depth = toScreen(otherRoot.Position)
+                
+                if onScreen and depth > 0 then
+                    local dist = getDistanceToPlayer(player)
+                    local inRange = dist <= radius
+                    
+                    -- Small circle indicator on player
+                    local indicator = createCircle(8, 2, true)
+                    indicator.Position = screenPos
+                    indicator.Color = inRange and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 80, 80)
+                    indicator.Visible = true
+                    indicator.Filled = true
+                    indicator.Transparency = 0.3
+                    
+                    table.insert(playerIndicators, indicator)
+                    
+                    -- Show if playing target animation
+                    if isPlayingTargetAnimation(player) then
+                        local alertCircle = createCircle(15, 3, false)
+                        alertCircle.Position = screenPos
+                        alertCircle.Color = Color3.fromRGB(255, 255, 0) -- Yellow for animation detected
+                        alertCircle.Visible = true
+                        table.insert(playerIndicators, alertCircle)
                     end
                 end
             end
@@ -257,51 +244,97 @@ local function defuseLoop()
     end
 end
 
-function AutoDefuseControl.Start()
-    getgenv().AutoDefuseSettings.Enabled = true
+-- Main loop
+local function mainLoopFunc()
+    local settings = getgenv().AutoDefuseSettings
+    if not settings.Enabled then return end
     
-    -- Start defuse loop
-    if not defuseConnection then
-        defuseConnection = RunService.Heartbeat:Connect(function()
-            if getgenv().AutoDefuseSettings.Enabled then
-                pcall(defuseLoop)
+    local radius = settings.DetectionRadius
+    local delayMs = settings.Delay
+    
+    -- Update visuals
+    updateDetectionCircle()
+    updatePlayerIndicators()
+    
+    -- Check each player for target animation
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and not isMonsters(player) then
+            local dist = getDistanceToPlayer(player)
+            
+            -- Only check players in range
+            if dist <= radius then
+                local playerId = player.UserId
+                local isPlaying = isPlayingTargetAnimation(player)
+                
+                if isPlaying then
+                    -- Start tracking if not already
+                    if not detectedPlayers[playerId] then
+                        detectedPlayers[playerId] = tick() * 1000
+                        print("[AutoDefuse] Detected animation from:", player.Name)
+                    end
+                    
+                    -- Check if delay has passed
+                    local startTime = detectedPlayers[playerId]
+                    local elapsed = (tick() * 1000) - startTime
+                    
+                    if elapsed >= delayMs then
+                        -- Check cooldown
+                        if not clickCooldown[playerId] or (tick() - clickCooldown[playerId]) > 1 then
+                            doLeftClick()
+                            clickCooldown[playerId] = tick()
+                            print("[AutoDefuse] Clicked! Player:", player.Name, "Distance:", math.floor(dist))
+                        end
+                    end
+                else
+                    -- Player stopped playing animation, reset
+                    detectedPlayers[playerId] = nil
+                end
+            else
+                -- Out of range, reset
+                detectedPlayers[player.UserId] = nil
             end
-        end)
+        end
     end
-    
-    -- Start circle update loop
-    if not circleConnection then
-        circleConnection = RunService.RenderStepped:Connect(function()
-            pcall(updateCircles)
-        end)
-    end
-    
-    print("[AutoDefuse] Started - Detection radius:", getgenv().AutoDefuseSettings.DetectionRadius)
 end
 
-function AutoDefuseControl.Stop()
+function AutoDefuse.Start()
+    getgenv().AutoDefuseSettings.Enabled = true
+    
+    if mainLoop then
+        mainLoop:Disconnect()
+        mainLoop = nil
+    end
+    
+    -- Reset tracking
+    detectedPlayers = {}
+    clickCooldown = {}
+    
+    mainLoop = RunService.RenderStepped:Connect(function()
+        pcall(mainLoopFunc)
+    end)
+    
+    print("[AutoDefuse] Started")
+    print("  - Detection Radius:", getgenv().AutoDefuseSettings.DetectionRadius)
+    print("  - Delay:", getgenv().AutoDefuseSettings.Delay, "ms")
+    print("  - Show Circle:", getgenv().AutoDefuseSettings.ShowCircle)
+end
+
+function AutoDefuse.Stop()
     getgenv().AutoDefuseSettings.Enabled = false
     
-    if defuseConnection then
-        defuseConnection:Disconnect()
-        defuseConnection = nil
+    if mainLoop then
+        mainLoop:Disconnect()
+        mainLoop = nil
     end
     
-    if circleConnection then
-        circleConnection:Disconnect()
-        circleConnection = nil
-    end
-    
-    -- Clean up circles
-    for _, circle in pairs(detectionCircles) do
-        pcall(function() circle:Remove() end)
-    end
-    detectionCircles = {}
+    clearDrawings()
+    detectedPlayers = {}
+    clickCooldown = {}
     
     print("[AutoDefuse] Stopped")
 end
 
--- Export control
-getgenv().AutoDefuseControl = AutoDefuseControl
+-- Export
+getgenv().AutoDefuseControl = AutoDefuse
 
-return AutoDefuseControl
+return AutoDefuse
