@@ -1,10 +1,7 @@
 -- Auto Defuse
 -- Detect nearby Monsters team players playing bomb animations, then left click
 
-print("fdsfds")
-
 local Players = game:GetService("Players")
-local VIM = game:GetService("VirtualInputManager")
 local LP = Players.LocalPlayer
 
 local ANIM_IDS = {
@@ -27,9 +24,9 @@ end
 
 local function click()
     pcall(function()
-        VIM:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+        mouse1press()
         task.defer(function()
-            VIM:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+            mouse1release()
         end)
     end)
 end
