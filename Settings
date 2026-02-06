@@ -1,153 +1,153 @@
--- Euva Settings Module (Updated)
--- Uses new component system and matches theme
+-- Euva Settings Module
+-- Compatible with Euva pink theme layout system
+
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
 
 local SettingsModule = {}
-SettingsModule.Theme = nil
-SettingsModule.Components = nil
-SettingsModule.ui = nil
-SettingsModule.Layout = nil -- Optional, for blur/transparency control
-
-function SettingsModule.SetTheme(theme)
-    SettingsModule.Theme = theme
-end
-
-function SettingsModule.SetComponents(comp)
-    SettingsModule.Components = comp
-end
-
-function SettingsModule.SetUI(uiFn)
-    SettingsModule.ui = uiFn
-end
-
-function SettingsModule.SetLayout(layout)
-    SettingsModule.Layout = layout
-end
 
 function SettingsModule.CreateUI(parent)
-    local Theme = SettingsModule.Theme
-    local Components = SettingsModule.Components
-    local ui = SettingsModule.ui or Components.ui
-    local THEME = Theme.Colors
-    
-    -- APPEARANCE Section
-    local appearanceSection = Components.CreateSection(parent, "APPEARANCE")
-    
-    -- GUI Transparency slider (default 10%)
-    Components.CreateSlider(appearanceSection, "GUI Transparency", 10, 0, 100, function(value)
-        if SettingsModule.Layout and SettingsModule.Layout.SetGuiTransparency then
-            SettingsModule.Layout.SetGuiTransparency(value / 100)
-        end
+    local settingsContent = Instance.new("ScrollingFrame")
+    settingsContent.Size = UDim2.new(1, 0, 1, 0)
+    settingsContent.BackgroundTransparency = 1
+    settingsContent.BorderSizePixel = 0
+    settingsContent.ScrollBarThickness = 4
+    settingsContent.ScrollBarImageColor3 = Color3.fromRGB(200, 180, 190)
+    settingsContent.CanvasSize = UDim2.new(0, 0, 0, 0)
+    settingsContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    settingsContent.Parent = parent
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.Padding = UDim.new(0, 12)
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Parent = settingsContent
+
+    -- ============================================
+    -- SCRIPT MANAGEMENT
+    -- ============================================
+
+    local reloadTitle = Instance.new("TextLabel")
+    reloadTitle.Size = UDim2.new(1, -20, 0, 30)
+    reloadTitle.BackgroundTransparency = 1
+    reloadTitle.Text = "SCRIPT MANAGEMENT"
+    reloadTitle.Font = Enum.Font.GothamBold
+    reloadTitle.TextSize = 15
+    reloadTitle.TextColor3 = Color3.fromRGB(60, 50, 55)
+    reloadTitle.TextXAlignment = Enum.TextXAlignment.Left
+    reloadTitle.LayoutOrder = 1
+    reloadTitle.Parent = settingsContent
+
+    -- Reload button
+    local reloadButton = Instance.new("TextButton")
+    reloadButton.Size = UDim2.new(1, -20, 0, 42)
+    reloadButton.BackgroundColor3 = Color3.fromRGB(240, 220, 230)
+    reloadButton.BorderSizePixel = 0
+    reloadButton.Text = "Reload Script"
+    reloadButton.Font = Enum.Font.GothamBold
+    reloadButton.TextSize = 14
+    reloadButton.TextColor3 = Color3.fromRGB(60, 50, 55)
+    reloadButton.AutoButtonColor = false
+    reloadButton.LayoutOrder = 2
+    reloadButton.Parent = settingsContent
+
+    local reloadCorner = Instance.new("UICorner")
+    reloadCorner.CornerRadius = UDim.new(0, 6)
+    reloadCorner.Parent = reloadButton
+
+    reloadButton.MouseEnter:Connect(function()
+        reloadButton.BackgroundColor3 = Color3.fromRGB(250, 230, 240)
     end)
-    
-    -- Background Blur slider
-    Components.CreateSlider(appearanceSection, "Background Blur", 0, 0, 100, function(value)
-        if SettingsModule.Layout and SettingsModule.Layout.SetBlur then
-            SettingsModule.Layout.SetBlur(value / 100)
-        end
+    reloadButton.MouseLeave:Connect(function()
+        reloadButton.BackgroundColor3 = Color3.fromRGB(240, 220, 230)
     end)
-    
-    -- Decoration Transparency slider
-    Components.CreateSlider(appearanceSection, "Decoration Transparency", 80, 0, 100, function(value)
-        -- If Decorations module is available
-        local Deco = rawget(_G, "EuvaDeco")
-        if Deco and Deco.SetTransparency then
-            Deco.SetTransparency(value / 100)
+
+    reloadButton.MouseButton1Click:Connect(function()
+        reloadButton.Text = "Reloading..."
+        reloadButton.BackgroundColor3 = Color3.fromRGB(255, 200, 200)
+
+        task.wait(0.5)
+
+        -- Destroy existing GUI
+        for _, gui in pairs(CoreGui:GetChildren()) do
+            if gui.Name == "EuvaMainGUI" then
+                gui:Destroy()
+            end
         end
-    end)
-    
-    -- SCRIPT MANAGEMENT Section
-    local scriptSection = Components.CreateSection(parent, "SCRIPT MANAGEMENT")
-    
-    local reloadBtn = Components.CreateButton(scriptSection, "🔄 Reload Script", function()
-        -- Destroy all Euva GUIs
-        local CoreGui = game:GetService("CoreGui")
-        local Lighting = game:GetService("Lighting")
-        
-        -- Remove blur
-        local blur = Lighting:FindFirstChild("EuvaBlur")
+
+        local blur = game:GetService("Lighting"):FindFirstChild("EuvaBlur")
         if blur then blur:Destroy() end
-        
-        -- Remove GUI
-        local gui = CoreGui:FindFirstChild("EuvaMainGUI")
-        if gui then gui:Destroy() end
-        
-        print("[Euva] GUI destroyed - Re-execute script to reload")
+
+        print("[Euva] GUI destroyed - Please re-execute your script")
     end)
-    reloadBtn.Size = UDim2.new(1, -20, 0, 40)
-    
-    Components.CreateLabel(scriptSection, "Note: Re-execute your script to reload.", true)
-    
-    -- KEYBINDS Section
-    local keybindsSection = Components.CreateSection(parent, "KEYBINDS")
-    
-    local keybindData = {
-        {"Right Shift", "Toggle GUI visibility"},
-        {"Drag Toggle", "Enable/disable dragging parts (Misc tab)"},
-    }
-    
-    for _, kb in ipairs(keybindData) do
-        local row = ui("Frame", {
-            Size = UDim2.new(1, 0, 0, 24),
-            BackgroundTransparency = 1,
-            Parent = keybindsSection,
-        })
-        
-        ui("TextLabel", {
-            Size = UDim2.new(0, 100, 1, 0),
-            BackgroundTransparency = 1,
-            Text = kb[1],
-            Font = Enum.Font.GothamBold,
-            TextSize = 12,
-            TextColor3 = THEME.Text,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            Parent = row,
-        })
-        
-        ui("TextLabel", {
-            Size = UDim2.new(1, -110, 1, 0),
-            Position = UDim2.new(0, 110, 0, 0),
-            BackgroundTransparency = 1,
-            Text = "- " .. kb[2],
-            Font = Enum.Font.Gotham,
-            TextSize = 12,
-            TextColor3 = THEME.TextMuted,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            Parent = row,
-        })
-    end
-    
-    -- INFORMATION Section
-    local infoSection = Components.CreateSection(parent, "INFORMATION")
-    
-    local infoText = [[Euva GUI v2.0
 
-Features:
-• Visual - ESP, Health Bars, Object ESP
-• Combat - Hitbox Expander, Aimlock, Auto Defuse
-• Player - Reset, Jump Height, Noclip, Invisible
-• Misc - Part tools (Move, Rotate, Ring, RPM)
-• Settings - Appearance, Keybinds
+    local reloadNote = Instance.new("TextLabel")
+    reloadNote.Size = UDim2.new(1, -20, 0, 30)
+    reloadNote.BackgroundTransparency = 1
+    reloadNote.Text = "This will close the GUI. Re-execute your script to reload."
+    reloadNote.Font = Enum.Font.Gotham
+    reloadNote.TextSize = 11
+    reloadNote.TextColor3 = Color3.fromRGB(120, 110, 115)
+    reloadNote.TextXAlignment = Enum.TextXAlignment.Left
+    reloadNote.TextWrapped = true
+    reloadNote.LayoutOrder = 3
+    reloadNote.Parent = settingsContent
 
-Made with ❤️]]
-    
-    ui("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 120),
-        BackgroundTransparency = 1,
-        Text = infoText,
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
-        TextColor3 = THEME.TextMuted,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Top,
-        TextWrapped = true,
-        Parent = infoSection,
-    })
-    
-    -- Discord button at bottom
-    local discordBtn = Components.CreateButton(infoSection, "Join Discord", function()
-        Components.TryClipboard(Theme.Config.DiscordInvite)
-    end, true)
-    discordBtn.Size = UDim2.new(1, -20, 0, 36)
+    -- ============================================
+    -- KEYBINDS
+    -- ============================================
+
+    local keybindsTitle = Instance.new("TextLabel")
+    keybindsTitle.Size = UDim2.new(1, -20, 0, 30)
+    keybindsTitle.BackgroundTransparency = 1
+    keybindsTitle.Text = "KEYBINDS"
+    keybindsTitle.Font = Enum.Font.GothamBold
+    keybindsTitle.TextSize = 15
+    keybindsTitle.TextColor3 = Color3.fromRGB(60, 50, 55)
+    keybindsTitle.TextXAlignment = Enum.TextXAlignment.Left
+    keybindsTitle.LayoutOrder = 4
+    keybindsTitle.Parent = settingsContent
+
+    local keybindInfo = Instance.new("TextLabel")
+    keybindInfo.Size = UDim2.new(1, -20, 0, 50)
+    keybindInfo.BackgroundTransparency = 1
+    keybindInfo.Text = "Right Shift - Toggle GUI Visibility\n\nPress Right Shift to hide/show the GUI"
+    keybindInfo.Font = Enum.Font.Gotham
+    keybindInfo.TextSize = 12
+    keybindInfo.TextColor3 = Color3.fromRGB(80, 70, 75)
+    keybindInfo.TextXAlignment = Enum.TextXAlignment.Left
+    keybindInfo.TextWrapped = true
+    keybindInfo.LayoutOrder = 5
+    keybindInfo.Parent = settingsContent
+
+    -- ============================================
+    -- INFORMATION
+    -- ============================================
+
+    local infoTitle = Instance.new("TextLabel")
+    infoTitle.Size = UDim2.new(1, -20, 0, 30)
+    infoTitle.BackgroundTransparency = 1
+    infoTitle.Text = "INFORMATION"
+    infoTitle.Font = Enum.Font.GothamBold
+    infoTitle.TextSize = 15
+    infoTitle.TextColor3 = Color3.fromRGB(60, 50, 55)
+    infoTitle.TextXAlignment = Enum.TextXAlignment.Left
+    infoTitle.LayoutOrder = 6
+    infoTitle.Parent = settingsContent
+
+    local infoText = Instance.new("TextLabel")
+    infoText.Size = UDim2.new(1, -20, 0, 100)
+    infoText.BackgroundTransparency = 1
+    infoText.Text = "Euva GUI v2.0\n\nFeatures:\n- Combat: Hitbox, Aimlock, Auto Defuse\n- Visual: ESP, Health Bars, Object ESP\n- Player: Reset, JumpHeight, Noclip, Invisible\n- Misc: MoveTool, RotateTool, RingShape, RPM, Safe-NOS\n- Settings: Script Management"
+    infoText.Font = Enum.Font.Gotham
+    infoText.TextSize = 12
+    infoText.TextColor3 = Color3.fromRGB(80, 70, 75)
+    infoText.TextXAlignment = Enum.TextXAlignment.Left
+    infoText.TextYAlignment = Enum.TextYAlignment.Top
+    infoText.TextWrapped = true
+    infoText.LayoutOrder = 7
+    infoText.Parent = settingsContent
 end
 
 function SettingsModule.Cleanup()
