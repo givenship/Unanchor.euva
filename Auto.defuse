@@ -1,17 +1,29 @@
 -- Auto Defuse
--- Detect nearby Monsters team players playing bomb animations, then left click
+-- Method 1: Detect Monsters team animation IDs
+-- Method 2: Detect Sound ID 100240645 playing nearby
+-- Circle at feet: red = no monsters in range, green = monsters in range
+
+print("how good is that dick bitch")
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local LP = Players.LocalPlayer
 
 local ANIM_IDS = {
     ["99918936475651"] = true,
     ["115241304811827"] = true
 }
+local SOUND_ID = "100240645"
 
-local RADIUS = 30
 local running = false
 local connections = {}
+local circlePart = nil
+local heartbeatConn = nil
+local soundConns = {}
+
+local function getSettings()
+    return getgenv().AutoDefuseSettings or {}
+end
 
 local function getRoot(player)
     local c = player.Character
@@ -31,82 +43,243 @@ local function click()
     end)
 end
 
+local function doClick()
+    local s = getSettings()
+    local delay = (s.Delay or 0) / 1000
+    if delay > 0 then
+        task.wait(delay)
+    end
+    if not running then return end
+    click()
+end
+
 local function isMonster(player)
     return player.Team and player.Team.Name == "Monsters"
+end
+
+local function getRadius()
+    return getSettings().DetectionRadius or 30
 end
 
 local function inRange(player)
     local a = getRoot(LP)
     local b = getRoot(player)
     if not a or not b then return false end
-    return (a.Position - b.Position).Magnitude <= RADIUS
+    return (a.Position - b.Position).Magnitude <= getRadius()
 end
+
+-- ========== CIRCLE ==========
+
+local function monstersInRange()
+    local root = getRoot(LP)
+    if not root then return false end
+    local radius = getRadius()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and isMonster(p) then
+            local r = getRoot(p)
+            if r and (root.Position - r.Position).Magnitude <= radius then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function destroyCircle()
+    if circlePart then
+        pcall(function() circlePart:Destroy() end)
+        circlePart = nil
+    end
+end
+
+local function updateCircle()
+    local s = getSettings()
+    if not s.ShowCircle or not running then
+        destroyCircle()
+        return
+    end
+
+    local root = getRoot(LP)
+    if not root then
+        destroyCircle()
+        return
+    end
+
+    local radius = getRadius()
+
+    if not circlePart or not circlePart.Parent then
+        circlePart = Instance.new("Part")
+        circlePart.Name = "AutoDefuseCircle"
+        circlePart.Shape = Enum.PartType.Cylinder
+        circlePart.Anchored = true
+        circlePart.CanCollide = false
+        circlePart.Material = Enum.Material.ForceField
+        circlePart.Transparency = 0.75
+        circlePart.Parent = workspace
+    end
+
+    -- position at feet
+    local footY = root.Position.Y - 3
+    circlePart.Size = Vector3.new(0.1, radius * 2, radius * 2)
+    circlePart.CFrame = CFrame.new(root.Position.X, footY, root.Position.Z) * CFrame.Angles(0, 0, math.rad(90))
+
+    -- color: green if monsters in range, red if not
+    if monstersInRange() then
+        circlePart.Color = Color3.fromRGB(0, 200, 0)
+    else
+        circlePart.Color = Color3.fromRGB(200, 0, 0)
+    end
+end
+
+-- ========== ANIMATION DETECTION ==========
+
+local function hookAnimator(player)
+    if player == LP then return end
+    if not isMonster(player) then return end
+
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    local animator = hum:FindFirstChildOfClass("Animator")
+    if not animator then return end
+
+    if connections[player] and connections[player].anim then
+        connections[player].anim:Disconnect()
+    end
+
+    local conn = animator.AnimationPlayed:Connect(function(track)
+        if not running then return end
+        if getSettings().Method ~= "Animation" then return end
+        local a = track.Animation
+        if not a then return end
+        local id = extractId(a.AnimationId)
+        if id and ANIM_IDS[id] and inRange(player) then
+            print("[AutoDefuse] Anim " .. id .. " from " .. player.Name)
+            task.spawn(doClick)
+        end
+    end)
+
+    if not connections[player] then connections[player] = {} end
+    connections[player].anim = conn
+end
+
+-- ========== SOUND DETECTION ==========
+
+local function onSoundAdded(sound)
+    if not running then return end
+    if getSettings().Method ~= "Sound" then return end
+    if not sound:IsA("Sound") then return end
+
+    local sid = extractId(sound.SoundId)
+    if sid ~= SOUND_ID then return end
+
+    -- check if sound is near the player
+    local root = getRoot(LP)
+    if not root then return end
+
+    local parent = sound.Parent
+    if not parent then return end
+
+    -- find position of the sound source
+    local pos = nil
+    if parent:IsA("BasePart") then
+        pos = parent.Position
+    elseif parent:IsA("Model") then
+        local prim = parent.PrimaryPart or parent:FindFirstChildWhichIsA("BasePart")
+        if prim then pos = prim.Position end
+    elseif parent:FindFirstChildWhichIsA("BasePart") then
+        pos = parent:FindFirstChildWhichIsA("BasePart").Position
+    end
+
+    if not pos then return end
+    if (root.Position - pos).Magnitude > getRadius() then return end
+
+    local function onPlay()
+        if not running then return end
+        if getSettings().Method ~= "Sound" then return end
+        print("[AutoDefuse] Sound " .. SOUND_ID .. " detected nearby")
+        task.spawn(doClick)
+    end
+
+    -- if already playing
+    if sound.IsPlaying then
+        onPlay()
+    end
+
+    -- watch for it to start playing
+    local playConn = sound.Played:Connect(function()
+        onPlay()
+    end)
+
+    table.insert(soundConns, playConn)
+end
+
+local function scanWorkspaceSounds()
+    -- scan existing sounds
+    for _, desc in ipairs(workspace:GetDescendants()) do
+        task.spawn(function()
+            onSoundAdded(desc)
+        end)
+    end
+end
+
+local descendantConn = nil
+
+local function startSoundWatch()
+    scanWorkspaceSounds()
+    descendantConn = workspace.DescendantAdded:Connect(function(desc)
+        if not running then return end
+        task.spawn(function()
+            onSoundAdded(desc)
+        end)
+    end)
+end
+
+local function stopSoundWatch()
+    if descendantConn then
+        descendantConn:Disconnect()
+        descendantConn = nil
+    end
+    for _, conn in ipairs(soundConns) do
+        pcall(function() conn:Disconnect() end)
+    end
+    soundConns = {}
+end
+
+-- ========== PLAYER TRACKING ==========
 
 local function watchPlayer(player)
     if player == LP then return end
 
-    local function hook()
-        if not isMonster(player) then return end
-        local char = player.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum then return end
-        local animator = hum:FindFirstChildOfClass("Animator")
-        if not animator then return end
-
-        if connections[player] and connections[player].anim then
-            connections[player].anim:Disconnect()
-        end
-
-        local conn = animator.AnimationPlayed:Connect(function(track)
-            if not running then return end
-            local a = track.Animation
-            if not a then return end
-            local id = extractId(a.AnimationId)
-            if id and ANIM_IDS[id] and inRange(player) then
-                local delay = 0
-                if getgenv().AutoDefuseSettings then
-                    delay = (getgenv().AutoDefuseSettings.Delay or 0) / 1000
-                end
-                if delay > 0 then
-                    task.wait(delay)
-                end
-                if not running then return end
-                print("[AutoDefuse] " .. player.Name .. " anim " .. id .. " -> click (delay " .. (delay * 1000) .. "ms)")
-                click()
-            end
-        end)
-
-        if not connections[player] then connections[player] = {} end
-        connections[player].anim = conn
+    local function tryHook()
+        task.wait(0.5)
+        if running then hookAnimator(player) end
     end
 
     if player.Character then
-        task.spawn(function()
-            task.wait(0.5)
-            hook()
-        end)
+        task.spawn(tryHook)
     end
 
-    local c = player.CharacterAdded:Connect(function()
+    local charConn = player.CharacterAdded:Connect(function()
         task.wait(1)
-        if running then hook() end
+        if running then hookAnimator(player) end
     end)
     if not connections[player] then connections[player] = {} end
-    connections[player].char = c
+    connections[player].char = charConn
 
-    local t = player:GetPropertyChangedSignal("Team"):Connect(function()
+    local teamConn = player:GetPropertyChangedSignal("Team"):Connect(function()
         if running and isMonster(player) and player.Character then
             task.spawn(function()
                 task.wait(0.5)
-                hook()
+                hookAnimator(player)
             end)
         end
     end)
-    connections[player].team = t
+    connections[player].team = teamConn
 end
 
-local function cleanup()
+local function cleanupAll()
     for _, data in pairs(connections) do
         for _, conn in pairs(data) do
             pcall(function() conn:Disconnect() end)
@@ -114,6 +287,8 @@ local function cleanup()
     end
     connections = {}
 end
+
+-- ========== START / STOP ==========
 
 local addedConn, removingConn
 
@@ -139,14 +314,23 @@ local function start()
         end
     end)
 
-    print("[AutoDefuse] ON")
+    startSoundWatch()
+
+    heartbeatConn = RunService.Heartbeat:Connect(function()
+        updateCircle()
+    end)
+
+    print("[AutoDefuse] ON - Method: " .. (getSettings().Method or "Animation"))
 end
 
 local function stop()
     running = false
     if addedConn then addedConn:Disconnect() addedConn = nil end
     if removingConn then removingConn:Disconnect() removingConn = nil end
-    cleanup()
+    if heartbeatConn then heartbeatConn:Disconnect() heartbeatConn = nil end
+    stopSoundWatch()
+    cleanupAll()
+    destroyCircle()
     print("[AutoDefuse] OFF")
 end
 
