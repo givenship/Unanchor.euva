@@ -12,14 +12,23 @@ local HITBOX_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/re
 local AIMLOCK_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Aimlock"
 local AUTODEFUSE_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Auto.defuse"
 
-local TEXT_COL = Color3.fromRGB(0, 0, 0)
+local TEXT_COL = Color3.fromRGB(184, 193, 206)
 local BTN_OFF = Color3.fromRGB(255, 255, 255)
-local BTN_ON = Color3.fromRGB(240, 220, 230)
+local BTN_ON = Color3.fromRGB(184, 193, 206)
 local SLIDER_BG = Color3.fromRGB(255, 255, 255)
-local SLIDER_FILL = Color3.fromRGB(0, 0, 0)
+local SLIDER_FILL = Color3.fromRGB(184, 193, 206)
 local CHECK_OFF = Color3.fromRGB(180, 180, 180)
 local CHECK_ON = Color3.fromRGB(255, 255, 255)
 local TXT_BG = Color3.fromRGB(255, 255, 255)
+
+local function addPadding(frame, lr, tb)
+    local pad = Instance.new("UIPadding")
+    pad.PaddingLeft = UDim.new(0, lr or 4)
+    pad.PaddingRight = UDim.new(0, lr or 4)
+    pad.PaddingTop = UDim.new(0, tb or 0)
+    pad.PaddingBottom = UDim.new(0, tb or 0)
+    pad.Parent = frame
+end
 
 getgenv().HitboxSettings = {
     Enabled = false,
@@ -99,16 +108,18 @@ function CombatModule.CreateUI(parent)
     -- Section title with white background
     local function createSectionTitle(text, position)
         local bg = Instance.new("Frame")
-        bg.Size = UDim2.new(1, -20, 0, 28)
+        bg.Size = UDim2.new(0, 0, 0, 28)
+        bg.AutomaticSize = Enum.AutomaticSize.X
         bg.Position = UDim2.new(0, 10, 0, position)
         bg.BackgroundColor3 = TXT_BG
         bg.BorderSizePixel = 0
         bg.ZIndex = 66
         bg.Parent = combatContent
+        addPadding(bg, 6, 0)
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -8, 1, 0)
-        label.Position = UDim2.new(0, 4, 0, 0)
+        label.Size = UDim2.new(0, 0, 1, 0)
+        label.AutomaticSize = Enum.AutomaticSize.X
         label.BackgroundTransparency = 1
         label.Text = text
         label.Font = Enum.Font.GothamBold
@@ -129,16 +140,18 @@ function CombatModule.CreateUI(parent)
         container.Parent = combatContent
 
         local labelBg = Instance.new("Frame")
-        labelBg.Size = UDim2.new(0.4, -10, 0, 40)
+        labelBg.Size = UDim2.new(0, 0, 0, 40)
         labelBg.Position = UDim2.new(0, 0, 0, 5)
+        labelBg.AutomaticSize = Enum.AutomaticSize.X
         labelBg.BackgroundColor3 = TXT_BG
         labelBg.BorderSizePixel = 0
         labelBg.ZIndex = 66
         labelBg.Parent = container
+        addPadding(labelBg, 6, 0)
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -8, 1, 0)
-        label.Position = UDim2.new(0, 4, 0, 0)
+        label.Size = UDim2.new(0, 0, 1, 0)
+        label.AutomaticSize = Enum.AutomaticSize.X
         label.BackgroundTransparency = 1
         label.Text = name
         label.Font = Enum.Font.GothamBold
@@ -160,10 +173,6 @@ function CombatModule.CreateUI(parent)
         toggleButton.AutoButtonColor = false
         toggleButton.ZIndex = 68
         toggleButton.Parent = container
-
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 6)
-        corner.Parent = toggleButton
 
         toggleButton.MouseButton1Click:Connect(function()
             settingsTable[settingKey] = not settingsTable[settingKey]
@@ -189,16 +198,18 @@ function CombatModule.CreateUI(parent)
         container.Parent = combatContent
 
         local labelBg = Instance.new("Frame")
-        labelBg.Size = UDim2.new(0, 100, 0, 20)
+        labelBg.Size = UDim2.new(0, 0, 0, 20)
         labelBg.Position = UDim2.new(0, 0, 0, 5)
+        labelBg.AutomaticSize = Enum.AutomaticSize.X
         labelBg.BackgroundColor3 = TXT_BG
         labelBg.BorderSizePixel = 0
         labelBg.ZIndex = 66
         labelBg.Parent = container
+        addPadding(labelBg, 4, 0)
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -4, 1, 0)
-        label.Position = UDim2.new(0, 2, 0, 0)
+        label.Size = UDim2.new(0, 0, 1, 0)
+        label.AutomaticSize = Enum.AutomaticSize.X
         label.BackgroundTransparency = 1
         label.Text = name .. ": " .. settingsTable[settingKey]
         label.Font = Enum.Font.Gotham
@@ -266,16 +277,18 @@ function CombatModule.CreateUI(parent)
         container.Parent = combatContent
 
         local labelBg = Instance.new("Frame")
-        labelBg.Size = UDim2.new(0, 120, 0, 20)
+        labelBg.Size = UDim2.new(0, 0, 0, 20)
         labelBg.Position = UDim2.new(0, 0, 0, 5)
+        labelBg.AutomaticSize = Enum.AutomaticSize.X
         labelBg.BackgroundColor3 = TXT_BG
         labelBg.BorderSizePixel = 0
         labelBg.ZIndex = 66
         labelBg.Parent = container
+        addPadding(labelBg, 4, 0)
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -4, 1, 0)
-        label.Position = UDim2.new(0, 2, 0, 0)
+        label.Size = UDim2.new(0, 0, 1, 0)
+        label.AutomaticSize = Enum.AutomaticSize.X
         label.BackgroundTransparency = 1
         label.Text = name .. ": " .. string.format("%.2f", settingsTable[settingKey])
         label.Font = Enum.Font.Gotham
@@ -352,10 +365,6 @@ function CombatModule.CreateUI(parent)
         checkbox.ZIndex = 68
         checkbox.Parent = container
 
-        local cc = Instance.new("UICorner")
-        cc.CornerRadius = UDim.new(0, 4)
-        cc.Parent = checkbox
-
         local checkmark = Instance.new("TextLabel")
         checkmark.Size = UDim2.new(1, 0, 1, 0)
         checkmark.BackgroundTransparency = 1
@@ -367,16 +376,18 @@ function CombatModule.CreateUI(parent)
         checkmark.Parent = checkbox
 
         local labelBg = Instance.new("Frame")
-        labelBg.Size = UDim2.new(1, -30, 0, 30)
+        labelBg.Size = UDim2.new(0, 0, 0, 30)
         labelBg.Position = UDim2.new(0, 30, 0, 0)
+        labelBg.AutomaticSize = Enum.AutomaticSize.X
         labelBg.BackgroundColor3 = TXT_BG
         labelBg.BorderSizePixel = 0
         labelBg.ZIndex = 66
         labelBg.Parent = container
+        addPadding(labelBg, 6, 0)
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -8, 1, 0)
-        label.Position = UDim2.new(0, 4, 0, 0)
+        label.Size = UDim2.new(0, 0, 1, 0)
+        label.AutomaticSize = Enum.AutomaticSize.X
         label.BackgroundTransparency = 1
         label.Text = name
         label.Font = Enum.Font.Gotham
@@ -431,15 +442,17 @@ function CombatModule.CreateUI(parent)
         container.Parent = combatContent
 
         local labelBg = Instance.new("Frame")
-        labelBg.Size = UDim2.new(1, 0, 0, 20)
+        labelBg.Size = UDim2.new(0, 0, 0, 20)
+        labelBg.AutomaticSize = Enum.AutomaticSize.X
         labelBg.BackgroundColor3 = TXT_BG
         labelBg.BorderSizePixel = 0
         labelBg.ZIndex = 66
         labelBg.Parent = container
+        addPadding(labelBg, 4, 0)
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -4, 1, 0)
-        label.Position = UDim2.new(0, 2, 0, 0)
+        label.Size = UDim2.new(0, 0, 1, 0)
+        label.AutomaticSize = Enum.AutomaticSize.X
         label.BackgroundTransparency = 1
         label.Text = name
         label.Font = Enum.Font.GothamBold
