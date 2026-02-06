@@ -1,14 +1,14 @@
--- AutoFarm v3
--- Go straight to target unless obstacle blocks the way
--- Get as close as possible at all times
--- Monsters: follow Humans, click after idle 5s within 30 studs
--- Humans: follow Monsters, 30cps, circle, waypoint, anti-back, target memory
-
-print("um")
+-- AutoFarm v4
+-- Goes straight to target (walks off cliffs, no edge avoidance)
+-- Movement = XZ only (Y changes ignored)
+-- Idle 5s = auto left click
+-- Monsters: click within 30 studs, click if alive 20s without taking damage
+-- Humans: press "1" once on monster detect, 30cps, anti-back, target memory, waypoint
 
 local Players = game:GetService("Players")
 local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
+local VIS = game:GetService("VirtualInputManager")
 local LP = Players.LocalPlayer
 
 -- ========== CONFIG ==========
@@ -18,40 +18,43 @@ local Y_PENALTY = 3
 local MAX_Y = 50
 local JUMP_H = 8.5
 local MAX_OBS = 9
-local STUCK_TIME = 2
-local STUCK_DIST = 1
 
--- Monsters
-local MONSTER_IDLE_TIME = 5
+local IDLE_TIME = 5
+local IDLE_DIST = 1
+
 local MONSTER_CLICK_RANGE = 30
+local MONSTER_NODMG_TIME = 20
 
--- Humans
 local HUMAN_CPS = 30
 local HUMAN_DETECT_RANGE = 30
 
 -- ========== STATE ==========
 local running = false
-local heartbeat = nil
+local heartbeatConn = nil
 local lastJump = 0
 local lastClickTime = 0
 
-local monsterIdleStart = nil
-local monsterLastPos = nil
+-- idle (XZ only)
+local idleXZ = nil
+local idleTimer = 0
+
+-- monsters
+local monsterLastHP = nil
+local monsterNoDmgStart = nil
+
+-- humans
+local pressedOne = false
 local memoryTarget = nil
 local circlePart = nil
 
--- pathfinding (only used when blocked)
-local currentWaypoints = nil
-local currentWpIndex = 2
-local currentPath = nil
-local pathKey = nil
-local lastPathTime = 0
-local blockedConn = nil
-local usePathfind = false -- flag: are we currently pathfinding around obstacle?
-
--- stuck
-local stuckPos = nil
-local stuckStart = nil
+-- pathfind (wall only)
+local pfWaypoints = nil
+local pfIndex = 2
+local pfPath = nil
+local pfKey = nil
+local pfTime = 0
+local pfBlockedConn = nil
+local pfActive = false
 
 -- ========== SETTINGS ==========
 local function S()
@@ -70,7 +73,7 @@ local function refreshRay()
     rayP.FilterDescendantsInstances = t
 end
 
--- ========== HELPERS ==========
+-- ========== CORE HELPERS ==========
 local function root(p)
     local c = p.Character
     return c and c:FindFirstChild("HumanoidRootPart")
@@ -93,13 +96,13 @@ end
 local function isMonster(p) return team(p) == "Monsters" end
 local function isHuman(p) return team(p) == "Humans" end
 
-local function dist(a, b)
+local function dist3d(a, b)
     local ra, rb = root(a), root(b)
     if not ra or not rb then return math.huge end
     return (ra.Position - rb.Position).Magnitude
 end
 
-local function distToPos(p, pos)
+local function distPos(p, pos)
     local r = root(p)
     if not r then return math.huge end
     return (r.Position - pos).Magnitude
@@ -122,16 +125,26 @@ local function predict(p)
     return r.Position + Vector3.new(v.X, 0, v.Z) * PREDICT
 end
 
-local function getVelocity(p)
+local function getVel(p)
     local r = root(p)
     if not r then return Vector3.zero end
     return r.AssemblyLinearVelocity
 end
 
-local function press()
+-- ========== INPUT ==========
+local function click()
     pcall(function()
         mouse1press()
         task.defer(function() mouse1release() end)
+    end)
+end
+
+local function tapKey(keyCode)
+    pcall(function()
+        VIS:SendKeyEvent(true, keyCode, false, game)
+        task.defer(function()
+            VIS:SendKeyEvent(false, keyCode, false, game)
+        end)
     end)
 end
 
@@ -141,13 +154,13 @@ local function moveTo(pos)
     if h then h:MoveTo(pos) end
 end
 
-local function stopMove()
+local function stopMov()
     local h, r = hum(LP), root(LP)
     if h and r then h:MoveTo(r.Position) end
 end
 
-local function face(target)
-    local a, b = root(LP), root(target)
+local function face(tgt)
+    local a, b = root(LP), root(tgt)
     if not a or not b then return end
     local d = b.Position - a.Position
     local flat = Vector3.new(d.X, 0, d.Z)
@@ -161,11 +174,11 @@ local function jump()
     if not h then return end
     h.JumpHeight = JUMP_H
     h.UseJumpPower = false
-    local state = h:GetState()
-    if state == Enum.HumanoidStateType.Running
-        or state == Enum.HumanoidStateType.RunningNoPhysics
-        or state == Enum.HumanoidStateType.Landed
-        or state == Enum.HumanoidStateType.None then
+    local st = h:GetState()
+    if st == Enum.HumanoidStateType.Running
+        or st == Enum.HumanoidStateType.RunningNoPhysics
+        or st == Enum.HumanoidStateType.Landed
+        or st == Enum.HumanoidStateType.None then
         h:ChangeState(Enum.HumanoidStateType.Jumping)
     end
 end
@@ -178,31 +191,7 @@ local function tryJump()
     end
 end
 
--- ========== OBSTACLE DETECTION ==========
-
--- Check if there's an obstacle between us and a target position
-local function hasObstacleTo(targetPos)
-    local r = root(LP)
-    if not r then return false end
-    refreshRay()
-
-    local dir = targetPos - r.Position
-    local horizDir = Vector3.new(dir.X, 0, dir.Z)
-    if horizDir.Magnitude < 2 then return false end -- too close to check
-
-    -- raycast at waist level toward target (max 30 studs)
-    local checkDist = math.min(horizDir.Magnitude, 30)
-    local hit = workspace:Raycast(r.Position, horizDir.Unit * checkDist, rayP)
-
-    if not hit then return false end -- clear path
-
-    -- hit something: check if it's the ground (normal pointing up = floor, not wall)
-    if hit.Normal.Y > 0.8 then return false end -- it's floor/ramp, not a wall
-
-    return true
-end
-
--- Check obstacle height directly in front
+-- ========== OBSTACLE (wall in front) ==========
 local function obsHeight()
     local r = root(LP)
     if not r then return 0 end
@@ -210,9 +199,9 @@ local function obsHeight()
     local foot = r.Position - Vector3.new(0, 2.5, 0)
     local fwd = r.CFrame.LookVector * 4
     if not workspace:Raycast(foot, fwd, rayP) then return 0 end
-    for h = 1, 16 do
-        if not workspace:Raycast(foot + Vector3.new(0, h, 0), fwd, rayP) then
-            return h
+    for i = 1, 16 do
+        if not workspace:Raycast(foot + Vector3.new(0, i, 0), fwd, rayP) then
+            return i
         end
     end
     return 99
@@ -222,11 +211,11 @@ local function sidestep()
     local r, h = root(LP), hum(LP)
     if not r or not h then return end
     refreshRay()
-    local rHit = workspace:Raycast(r.Position, r.CFrame.RightVector * 6, rayP)
-    local lHit = workspace:Raycast(r.Position, -r.CFrame.RightVector * 6, rayP)
-    if not rHit then
+    local rH = workspace:Raycast(r.Position, r.CFrame.RightVector * 6, rayP)
+    local lH = workspace:Raycast(r.Position, -r.CFrame.RightVector * 6, rayP)
+    if not rH then
         h:MoveTo(r.Position + r.CFrame.RightVector * 5)
-    elseif not lHit then
+    elseif not lH then
         h:MoveTo(r.Position - r.CFrame.RightVector * 5)
     else
         jump()
@@ -242,23 +231,45 @@ local function handleObs()
     end
 end
 
--- ========== STUCK DETECTION ==========
-local function updateStuck()
+-- ========== WALL CHECK (no edge check) ==========
+local function hasWall(targetPos)
     local r = root(LP)
     if not r then return false end
-    local pos = r.Position
-    local now = tick()
-    if stuckPos and (pos - stuckPos).Magnitude < STUCK_DIST then
-        if not stuckStart then
-            stuckStart = now
-        elseif now - stuckStart >= STUCK_TIME then
-            stuckStart = now
-            return true -- we are stuck
+    refreshRay()
+    local dir = targetPos - r.Position
+    local flat = Vector3.new(dir.X, 0, dir.Z)
+    if flat.Magnitude < 2 then return false end
+    local d = math.min(flat.Magnitude, 30)
+    local hit = workspace:Raycast(r.Position, flat.Unit * d, rayP)
+    if not hit then return false end
+    if hit.Normal.Y > 0.8 then return false end
+    return true
+end
+
+-- ========== IDLE DETECTION (XZ ONLY, ignore Y) ==========
+local function checkIdle(dt)
+    local r = root(LP)
+    if not r then return false end
+
+    local xz = Vector2.new(r.Position.X, r.Position.Z)
+
+    if idleXZ then
+        local moved = (xz - idleXZ).Magnitude
+        if moved < IDLE_DIST then
+            idleTimer = idleTimer + dt
+            if idleTimer >= IDLE_TIME then
+                idleTimer = 0
+                idleXZ = xz
+                return true
+            end
+            idleXZ = xz
+            return false
         end
-    else
-        stuckStart = nil
     end
-    stuckPos = pos
+
+    -- moved: reset
+    idleTimer = 0
+    idleXZ = xz
     return false
 end
 
@@ -276,12 +287,9 @@ local function updateCircle()
         destroyCircle()
         return
     end
-
     local r = root(LP)
     if not r then destroyCircle() return end
-
     local radius = s.DetectRadius or HUMAN_DETECT_RANGE
-
     if not circlePart or not circlePart.Parent then
         circlePart = Instance.new("Part")
         circlePart.Name = "AutoFarmCircle"
@@ -292,122 +300,102 @@ local function updateCircle()
         circlePart.Transparency = 0.75
         circlePart.Parent = workspace
     end
-
-    local footY = r.Position.Y - 3
     circlePart.Size = Vector3.new(0.1, radius * 2, radius * 2)
-    circlePart.CFrame = CFrame.new(r.Position.X, footY, r.Position.Z) * CFrame.Angles(0, 0, math.rad(90))
-
+    circlePart.CFrame = CFrame.new(r.Position.X, r.Position.Y - 3, r.Position.Z) * CFrame.Angles(0, 0, math.rad(90))
     local found = false
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LP and isMonster(p) and alive(p) then
-            if dist(LP, p) <= radius then
-                found = true
-                break
-            end
+        if p ~= LP and isMonster(p) and alive(p) and dist3d(LP, p) <= radius then
+            found = true
+            break
         end
     end
     circlePart.Color = found and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
 end
 
--- ========== PATHFIND (only when blocked) ==========
-local function clearPath()
-    currentWaypoints = nil
-    currentWpIndex = 2
-    if blockedConn then
-        pcall(function() blockedConn:Disconnect() end)
-        blockedConn = nil
-    end
-    currentPath = nil
-    pathKey = nil
-    usePathfind = false
+-- ========== PATHFIND (wall bypass only) ==========
+local function clearPF()
+    pfWaypoints = nil
+    pfIndex = 2
+    if pfBlockedConn then pcall(function() pfBlockedConn:Disconnect() end) pfBlockedConn = nil end
+    pfPath = nil
+    pfKey = nil
+    pfActive = false
 end
 
-local function computePath(targetPos)
+local function makePath(targetPos)
     local r = root(LP)
     if not r then return false end
     local path = PathfindingService:CreatePath({
         AgentRadius = 2, AgentHeight = 5,
-        AgentCanJump = true, AgentCanClimb = false,
-        WaypointSpacing = 3
+        AgentCanJump = true, WaypointSpacing = 3
     })
     local ok = pcall(function() path:ComputeAsync(r.Position, targetPos) end)
     if not ok or path.Status ~= Enum.PathStatus.Success then return false end
-    if blockedConn then pcall(function() blockedConn:Disconnect() end) end
-    currentPath = path
-    currentWaypoints = path:GetWaypoints()
-    currentWpIndex = 2
-    blockedConn = path.Blocked:Connect(function() clearPath() end)
+    if pfBlockedConn then pcall(function() pfBlockedConn:Disconnect() end) end
+    pfPath = path
+    pfWaypoints = path:GetWaypoints()
+    pfIndex = 2
+    pfBlockedConn = path.Blocked:Connect(function() clearPF() end)
     return true
 end
 
-local function advanceWaypoint()
-    if not currentWaypoints then return nil end
-    while currentWpIndex <= #currentWaypoints do
-        local wp = currentWaypoints[currentWpIndex]
+local function nextWP()
+    if not pfWaypoints then return nil end
+    while pfIndex <= #pfWaypoints do
+        local wp = pfWaypoints[pfIndex]
         local r = root(LP)
         if not r then return nil end
         local toWp = wp.Position - r.Position
         local behind = (toWp.X * r.CFrame.LookVector.X + toWp.Z * r.CFrame.LookVector.Z) < -1
         if (r.Position - wp.Position).Magnitude < 3 or behind then
-            currentWpIndex = currentWpIndex + 1
+            pfIndex = pfIndex + 1
         else
             return wp
         end
     end
-    clearPath()
+    clearPF()
     return nil
 end
 
--- ========== SMART MOVE ==========
--- Go straight unless obstacle, then pathfind around it
-
-local function smartMove(targetPos, key)
+-- ========== GO TO (straight, pathfind only for walls) ==========
+local function goTo(targetPos, key)
     local r = root(LP)
     if not r then return end
 
-    -- if currently pathfinding, check if path is still needed
-    if usePathfind then
-        -- re-check: is path to target clear now?
-        if not hasObstacleTo(targetPos) then
-            clearPath()
-            -- go straight
+    -- currently pathfinding around wall
+    if pfActive then
+        if not hasWall(targetPos) then
+            clearPF()
             moveTo(targetPos)
             handleObs()
             return
         end
-
-        -- continue pathfinding
         local now = tick()
-        if not currentWaypoints or pathKey ~= key or now - lastPathTime > 1.5 then
-            computePath(targetPos)
-            pathKey = key
-            lastPathTime = now
+        if not pfWaypoints or pfKey ~= key or now - pfTime > 1.5 then
+            makePath(targetPos)
+            pfKey = key
+            pfTime = now
         end
-
-        local wp = advanceWaypoint()
+        local wp = nextWP()
         if wp then
             if wp.Action == Enum.PathWaypointAction.Jump then jump() end
             handleObs()
             moveTo(wp.Position)
         else
-            -- ran out of waypoints, go direct
             moveTo(targetPos)
             handleObs()
         end
         return
     end
 
-    -- not pathfinding: try direct
-    local blocked = hasObstacleTo(targetPos)
-
-    if not blocked then
-        -- clear path, go straight
+    -- go straight (even off cliffs)
+    if not hasWall(targetPos) then
         moveTo(targetPos)
         handleObs()
         return
     end
 
-    -- obstacle detected: can we jump it?
+    -- wall: jumpable?
     local oh = obsHeight()
     if oh >= 2 and oh <= MAX_OBS then
         jump()
@@ -415,118 +403,114 @@ local function smartMove(targetPos, key)
         return
     end
 
-    -- too tall or complex: start pathfinding
-    usePathfind = true
-    if computePath(targetPos) then
-        pathKey = key
-        lastPathTime = tick()
+    -- tall wall: pathfind around
+    pfActive = true
+    if makePath(targetPos) then
+        pfKey = key
+        pfTime = tick()
     end
-
-    local wp = advanceWaypoint()
+    local wp = nextWP()
     if wp then
         if wp.Action == Enum.PathWaypointAction.Jump then jump() end
         handleObs()
         moveTo(wp.Position)
     else
-        -- pathfind failed, try sidestep
         sidestep()
     end
 end
 
 -- ========== TARGET FINDING ==========
-
-local function findEnemyInRadius(radius)
-    local myTeam = team(LP)
-    local best, bestS = nil, math.huge
+local function findInRadius(radius)
+    local my = team(LP)
+    local best, bs = nil, math.huge
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP and alive(p) then
             local t = team(p)
-            local ok = (myTeam == "Monsters" and t == "Humans") or (myTeam == "Humans" and t == "Monsters")
-            if ok and dist(LP, p) <= radius then
+            local ok = (my == "Monsters" and t == "Humans") or (my == "Humans" and t == "Monsters")
+            if ok and dist3d(LP, p) <= radius then
                 local s = score(p)
-                if s < bestS then best, bestS = p, s end
+                if s < bs then best, bs = p, s end
             end
         end
     end
     return best
 end
 
-local function findAnyEnemy()
-    local myTeam = team(LP)
-    local best, bestS = nil, math.huge
+local function findAny()
+    local my = team(LP)
+    local best, bs = nil, math.huge
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP and alive(p) then
             local t = team(p)
-            local ok = (myTeam == "Monsters" and t == "Humans") or (myTeam == "Humans" and t == "Monsters")
+            local ok = (my == "Monsters" and t == "Humans") or (my == "Humans" and t == "Monsters")
             if ok then
                 local s = score(p)
-                if s < bestS then best, bestS = p, s end
+                if s < bs then best, bs = p, s end
             end
         end
     end
     return best
 end
 
-local function isMovingAway(target)
-    local a, b = root(LP), root(target)
+local function movingAway(tgt)
+    local a, b = root(LP), root(tgt)
     if not a or not b then return false end
     local toUs = (a.Position - b.Position).Unit
-    local vel = getVelocity(target)
-    local horizVel = Vector3.new(vel.X, 0, vel.Z)
-    if horizVel.Magnitude < 2 then return false end
-    return (toUs.X * horizVel.Unit.X + toUs.Z * horizVel.Unit.Z) < -0.3
+    local vel = getVel(tgt)
+    local hv = Vector3.new(vel.X, 0, vel.Z)
+    if hv.Magnitude < 2 then return false end
+    return (toUs.X * hv.Unit.X + toUs.Z * hv.Unit.Z) < -0.3
 end
 
 -- ========== MONSTERS FRAME ==========
-
-local function monsterFrame()
-    local target = findAnyEnemy()
+local function monsterFrame(dt)
+    local target = findAny()
     if not target then
-        stopMove()
-        monsterIdleStart = nil
-        clearPath()
+        stopMov()
+        clearPF()
         return
     end
 
-    local d = dist(LP, target)
-    local r = root(LP)
+    local d = dist3d(LP, target)
+    local now = tick()
+    local h = hum(LP)
 
-    -- idle detection
-    if r then
-        local pos = r.Position
-        if monsterLastPos and (pos - monsterLastPos).Magnitude < 0.5 then
-            if not monsterIdleStart then monsterIdleStart = tick() end
-        else
-            monsterIdleStart = nil
+    -- track damage: if health dropped, reset no-damage timer
+    if h then
+        local hp = h.Health
+        if monsterLastHP and hp < monsterLastHP then
+            monsterNoDmgStart = now
         end
-        monsterLastPos = pos
+        monsterLastHP = hp
     end
 
-    -- click if idle 5s within 30 studs
-    if monsterIdleStart and (tick() - monsterIdleStart >= MONSTER_IDLE_TIME) and d <= MONSTER_CLICK_RANGE then
+    -- alive without taking damage for 20s: click
+    if monsterNoDmgStart and (now - monsterNoDmgStart >= MONSTER_NODMG_TIME) then
+        click()
+        monsterNoDmgStart = now
+    end
+
+    -- within 30 studs of human: auto click
+    if d <= MONSTER_CLICK_RANGE then
         face(target)
-        press()
-        monsterIdleStart = tick()
+        click()
+    end
+
+    -- idle 5s (XZ only): click
+    if checkIdle(dt) then
+        click()
     end
 
     tryJump()
 
-    -- always move toward target (get as close as possible)
     local tpos = predict(target) or (root(target) and root(target).Position)
     if tpos then
-        smartMove(tpos, target)
-    end
-
-    -- if stuck, try to unstick
-    if updateStuck() then
-        local oh = obsHeight()
-        if oh >= 2 then jump() else sidestep() end
+        goTo(tpos, target)
     end
 end
 
 -- ========== HUMANS FRAME ==========
-
-local function humanFrame()
+local function humanFrame(dt)
     local s = S()
     local detectRadius = s.DetectRadius or HUMAN_DETECT_RANGE
     local now = tick()
@@ -536,7 +520,7 @@ local function humanFrame()
     -- target memory
     if s.TargetMemory and memoryTarget then
         if alive(memoryTarget) and isMonster(memoryTarget) then
-            if dist(LP, memoryTarget) <= detectRadius * 3 then
+            if dist3d(LP, memoryTarget) <= detectRadius * 3 then
                 target = memoryTarget
             else
                 memoryTarget = nil
@@ -547,45 +531,52 @@ local function humanFrame()
     end
 
     if not target then
-        target = findEnemyInRadius(detectRadius)
+        target = findInRadius(detectRadius)
     end
 
     -- no target in radius
     if not target then
+        pressedOne = false
         local wp = s.Waypoint
         if wp then
-            local d = distToPos(LP, wp)
+            local d = distPos(LP, wp)
             if d > 3 then
                 tryJump()
-                smartMove(wp, "waypoint")
-                if updateStuck() then
-                    local oh = obsHeight()
-                    if oh >= 2 then jump() else sidestep() end
-                end
+                goTo(wp, "waypoint")
             else
-                stopMove()
-                clearPath()
+                stopMov()
+                clearPF()
             end
         else
-            target = findAnyEnemy()
+            target = findAny()
             if not target then
-                stopMove()
-                clearPath()
+                stopMov()
+                clearPF()
+                if checkIdle(dt) then click() end
                 return
             end
         end
     end
 
-    if not target then return end
+    if not target then
+        if checkIdle(dt) then click() end
+        return
+    end
+
+    -- press "1" once when monster first detected
+    if not pressedOne then
+        tapKey(Enum.KeyCode.One)
+        pressedOne = true
+    end
 
     if s.TargetMemory then
         memoryTarget = target
     end
 
-    local d = dist(LP, target)
+    local d = dist3d(LP, target)
 
     -- anti-back
-    if s.AntiBack and isMovingAway(target) then
+    if s.AntiBack and movingAway(target) then
         local a, b = root(LP), root(target)
         if a and b then
             local flat = Vector3.new(a.Position.X - b.Position.X, 0, a.Position.Z - b.Position.Z)
@@ -594,56 +585,48 @@ local function humanFrame()
             end
         end
         tryJump()
+        if checkIdle(dt) then click() end
         return
     end
 
-    -- attack: 30cps when close + keep moving closer
-    local atkRange = 4
-    if d <= atkRange then
+    -- attack: 30cps
+    if d <= 4 then
         face(target)
         local interval = 1 / HUMAN_CPS
         if now - lastClickTime >= interval then
-            press()
+            click()
             lastClickTime = now
         end
     end
 
-    -- ALWAYS move toward target (get as close as possible, even while attacking)
+    -- idle click
+    if checkIdle(dt) then
+        click()
+    end
+
     tryJump()
     local tpos = predict(target) or (root(target) and root(target).Position)
     if tpos then
-        smartMove(tpos, target)
-    end
-
-    if updateStuck() then
-        local oh = obsHeight()
-        if oh >= 2 then jump() else sidestep() end
+        goTo(tpos, target)
     end
 end
 
 -- ========== MAIN ==========
-local function onFrame()
+local function onFrame(dt)
     if not running then return end
     if not alive(LP) then
-        monsterIdleStart = nil
+        monsterNoDmgStart = tick()
+        idleTimer = 0
         return
     end
 
-    local myTeam = team(LP)
-    if myTeam == "Humans" then
-        updateCircle()
-    else
-        destroyCircle()
-    end
-
-    if myTeam == "Monsters" then
-        monsterFrame()
-    elseif myTeam == "Humans" then
-        humanFrame()
-    end
+    local my = team(LP)
+    if my == "Humans" then updateCircle() else destroyCircle() end
+    if my == "Monsters" then monsterFrame(dt)
+    elseif my == "Humans" then humanFrame(dt) end
 end
 
--- ========== CONTROL ==========
+-- ========== START / STOP ==========
 local function startFarm()
     if running then return end
     running = true
@@ -652,36 +635,49 @@ local function startFarm()
     if h then
         h.JumpHeight = JUMP_H
         h.UseJumpPower = false
+        monsterLastHP = h.Health
     end
 
     lastJump = tick()
     lastClickTime = tick()
-    monsterIdleStart = nil
-    monsterLastPos = root(LP) and root(LP).Position
+    monsterNoDmgStart = tick()
     memoryTarget = nil
-    stuckPos = nil
-    stuckStart = nil
-    clearPath()
+    pressedOne = false
+    idleXZ = nil
+    idleTimer = 0
+    clearPF()
 
-    heartbeat = RunService.Heartbeat:Connect(onFrame)
+    heartbeatConn = RunService.Heartbeat:Connect(onFrame)
     print("[AutoFarm] ON - " .. tostring(team(LP)))
 end
 
 local function stopFarm()
+    -- set flag first so onFrame exits immediately
     running = false
-    if heartbeat then heartbeat:Disconnect() heartbeat = nil end
-    clearPath()
+
+    -- disconnect
+    if heartbeatConn then
+        pcall(function() heartbeatConn:Disconnect() end)
+        heartbeatConn = nil
+    end
+
+    -- cleanup
+    clearPF()
     destroyCircle()
-    stopMove()
-    monsterIdleStart = nil
-    monsterLastPos = nil
+    pcall(function() stopMov() end)
+
+    -- reset
+    monsterNoDmgStart = nil
+    monsterLastHP = nil
     memoryTarget = nil
-    stuckPos = nil
-    stuckStart = nil
+    pressedOne = false
+    idleXZ = nil
+    idleTimer = 0
+
     print("[AutoFarm] OFF")
 end
 
-local function setWaypoint()
+local function setWP()
     local r = root(LP)
     if not r then return end
     local s = S()
@@ -690,18 +686,24 @@ local function setWaypoint()
     print("[AutoFarm] Waypoint set")
 end
 
-local function removeWaypoint()
+local function removeWP()
     local s = S()
     s.Waypoint = nil
     getgenv().AutoFarmSettings = s
     print("[AutoFarm] Waypoint removed")
 end
 
+-- kill old instance if re-executed
+if getgenv().AutoFarmControl and getgenv().AutoFarmControl.IsRunning() then
+    pcall(function() getgenv().AutoFarmControl.Stop() end)
+    task.wait(0.1)
+end
+
 getgenv().AutoFarmControl = {
     Start = startFarm,
     Stop = stopFarm,
-    SetWaypoint = setWaypoint,
-    RemoveWaypoint = removeWaypoint,
+    SetWaypoint = setWP,
+    RemoveWaypoint = removeWP,
     IsRunning = function() return running end
 }
 
