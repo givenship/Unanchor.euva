@@ -1,6 +1,8 @@
 -- Misc Module
 -- Loads tools from GitHub and provides Reset Rotation & Clear All Forces
 
+print("jarvis jerk it a little")
+
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -201,6 +203,74 @@ function MiscModule.CreateUI(parent)
             end
         end)
         return position + 60
+    end
+
+    local function createCheckbox(name, settingsTable, settingKey, position)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, -20, 0, 30)
+        container.Position = UDim2.new(0, 10, 0, position)
+        container.BackgroundTransparency = 1
+        container.ZIndex = 65
+        container.Parent = miscContent
+
+        local checkbox = Instance.new("TextButton")
+        checkbox.Size = UDim2.new(0, 20, 0, 20)
+        checkbox.Position = UDim2.new(0, 0, 0, 5)
+        checkbox.BackgroundColor3 = CHECK_OFF
+        checkbox.BackgroundTransparency = 0
+        checkbox.BorderSizePixel = 0
+        checkbox.Text = ""
+        checkbox.AutoButtonColor = false
+        checkbox.ZIndex = 68
+        checkbox.Parent = container
+
+        local checkmark = Instance.new("TextLabel")
+        checkmark.Size = UDim2.new(1, 0, 1, 0)
+        checkmark.BackgroundTransparency = 1
+        checkmark.Text = settingsTable[settingKey] and "✓" or ""
+        checkmark.Font = Enum.Font.GothamBold
+        checkmark.TextSize = 16
+        checkmark.TextColor3 = TEXT_COL
+        checkmark.ZIndex = 69
+        checkmark.Parent = checkbox
+
+        if settingsTable[settingKey] then
+            checkbox.BackgroundColor3 = CHECK_ON
+        end
+
+        local labelBg = Instance.new("Frame")
+        labelBg.Size = UDim2.new(0, 0, 0, 30)
+        labelBg.Position = UDim2.new(0, 30, 0, 0)
+        labelBg.AutomaticSize = Enum.AutomaticSize.X
+        labelBg.BackgroundColor3 = TXT_BG
+        labelBg.BorderSizePixel = 0
+        labelBg.ZIndex = 66
+        labelBg.Parent = container
+        addPadding(labelBg, 6, 0)
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0, 0, 1, 0)
+        label.AutomaticSize = Enum.AutomaticSize.X
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.Font = Enum.Font.Gotham
+        label.TextSize = 14
+        label.TextColor3 = TEXT_COL
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.ZIndex = 67
+        label.Parent = labelBg
+
+        checkbox.MouseButton1Click:Connect(function()
+            settingsTable[settingKey] = not settingsTable[settingKey]
+            if settingsTable[settingKey] then
+                checkbox.BackgroundColor3 = CHECK_ON
+                checkmark.Text = "✓"
+            else
+                checkbox.BackgroundColor3 = CHECK_OFF
+                checkmark.Text = ""
+            end
+        end)
+        return position + 40
     end
 
     -- Helper to set button active state
@@ -691,7 +761,9 @@ function MiscModule.CreateUI(parent)
     yPos = createCheckbox("Show Circle", getgenv().AutoFarmSettings, "ShowCircle", yPos)
 
     -- Detection Radius slider
-    yPos = createSlider("Detect Radius", getgenv().AutoFarmSettings, "DetectRadius", 10, 100, yPos)
+    yPos = createSlider("Detect Radius", yPos, 10, 100, getgenv().AutoFarmSettings.DetectRadius or 30, function(val)
+        getgenv().AutoFarmSettings.DetectRadius = val
+    end)
 
     -- Set Waypoint button
     local setWpBtn = Instance.new("TextButton")
