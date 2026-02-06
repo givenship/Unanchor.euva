@@ -8,6 +8,11 @@ local StarterGui = game:GetService("StarterGui")
 local Components = {}
 Components.Theme = nil -- Set by Main
 
+local LABEL_BG_COLOR = Color3.fromRGB(240, 220, 230) -- F0DCE6
+local TEXT_COLOR = Color3.fromRGB(0, 0, 0)
+local BTN_DISABLED_COLOR = Color3.fromRGB(255, 255, 255)
+local BTN_ENABLED_COLOR = Color3.fromRGB(240, 220, 230) -- F0DCE6
+
 local function tween(obj, info, props)
     local t = TweenService:Create(obj, info, props)
     t:Play()
@@ -64,16 +69,26 @@ function Components.CreateSection(parent, title)
     l.Parent = s
 
     if title then
+        -- Section title with square F0DCE6 background
+        local titleBg = Instance.new("Frame")
+        titleBg.Size = UDim2.new(1, 0, 0, 28)
+        titleBg.BackgroundColor3 = LABEL_BG_COLOR
+        titleBg.BackgroundTransparency = 0
+        titleBg.BorderSizePixel = 0
+        titleBg.ZIndex = 25
+        titleBg.Parent = s
+        
         local t = Instance.new("TextLabel")
         t.BackgroundTransparency = 1
-        t.Size = UDim2.new(1, 0, 0, 24)
+        t.Size = UDim2.new(1, -8, 1, 0)
+        t.Position = UDim2.new(0, 4, 0, 0)
         t.Text = title
         t.Font = Enum.Font.GothamBold
         t.TextSize = 15
-        t.TextColor3 = THEME.Text
+        t.TextColor3 = TEXT_COLOR
         t.TextXAlignment = Enum.TextXAlignment.Left
         t.ZIndex = 26
-        t.Parent = s
+        t.Parent = titleBg
     end
     return s
 end
@@ -81,16 +96,26 @@ end
 function Components.CreateLabel(parent, txt)
     local THEME = Components.Theme.Colors
     
+    -- Label with square F0DCE6 background
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(1, 0, 0, 24)
+    bg.BackgroundColor3 = LABEL_BG_COLOR
+    bg.BackgroundTransparency = 0
+    bg.BorderSizePixel = 0
+    bg.ZIndex = 25
+    bg.Parent = parent
+    
     local lb = Instance.new("TextLabel")
     lb.BackgroundTransparency = 1
-    lb.Size = UDim2.new(1, 0, 0, 20)
+    lb.Size = UDim2.new(1, -8, 1, 0)
+    lb.Position = UDim2.new(0, 4, 0, 0)
     lb.Text = txt
     lb.Font = Enum.Font.Gotham
     lb.TextSize = 13
-    lb.TextColor3 = Color3.fromRGB(80, 70, 75)
+    lb.TextColor3 = TEXT_COLOR
     lb.TextXAlignment = Enum.TextXAlignment.Left
     lb.ZIndex = 26
-    lb.Parent = parent
+    lb.Parent = bg
     return lb
 end
 
@@ -99,13 +124,13 @@ function Components.CreateButton(parent, txt, cb)
     
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(0, 160, 0, 36)
-    b.BackgroundColor3 = THEME.Soft
+    b.BackgroundColor3 = BTN_DISABLED_COLOR
     b.BorderSizePixel = 0
     b.AutoButtonColor = false
     b.Text = txt
     b.Font = Enum.Font.Gotham
     b.TextSize = 13
-    b.TextColor3 = THEME.Text
+    b.TextColor3 = TEXT_COLOR
     b.ZIndex = 26
     b.Parent = parent
 
@@ -113,8 +138,8 @@ function Components.CreateButton(parent, txt, cb)
     c.CornerRadius = UDim.new(0, 6)
     c.Parent = b
 
-    b.MouseEnter:Connect(function() b.BackgroundColor3 = THEME.SoftHover end)
-    b.MouseLeave:Connect(function() b.BackgroundColor3 = THEME.Soft end)
+    b.MouseEnter:Connect(function() b.BackgroundColor3 = BTN_ENABLED_COLOR end)
+    b.MouseLeave:Connect(function() b.BackgroundColor3 = BTN_DISABLED_COLOR end)
 
     b.MouseButton1Click:Connect(function()
         pop(b)
@@ -122,6 +147,39 @@ function Components.CreateButton(parent, txt, cb)
     end)
 
     return b
+end
+
+-- State toggle button: white when disabled, F0DCE6 when enabled
+function Components.CreateStateButton(parent, txt, default, cb)
+    local enabled = default or false
+    
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 160, 0, 36)
+    b.BackgroundColor3 = enabled and BTN_ENABLED_COLOR or BTN_DISABLED_COLOR
+    b.BorderSizePixel = 0
+    b.AutoButtonColor = false
+    b.Text = enabled and txt or "DISABLED"
+    b.Font = Enum.Font.Gotham
+    b.TextSize = 13
+    b.TextColor3 = TEXT_COLOR
+    b.ZIndex = 26
+    b.Parent = parent
+    
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 6)
+    c.Parent = b
+    
+    b.MouseButton1Click:Connect(function()
+        enabled = not enabled
+        tween(b, TweenInfo.new(0.15), {
+            BackgroundColor3 = enabled and BTN_ENABLED_COLOR or BTN_DISABLED_COLOR
+        })
+        b.Text = enabled and txt or "DISABLED"
+        pop(b)
+        if cb then cb(enabled) end
+    end)
+    
+    return b, function() return enabled end
 end
 
 function Components.CreateToggle(parent, txt, default, cb)
@@ -134,10 +192,11 @@ function Components.CreateToggle(parent, txt, default, cb)
     container.ZIndex = 26
     container.Parent = parent
     
+    -- Toggle switch: white when off, F0DCE6 when on
     local toggle = Instance.new("TextButton")
     toggle.Size = UDim2.new(0, 50, 0, 26)
     toggle.Position = UDim2.new(0, 0, 0, 5)
-    toggle.BackgroundColor3 = enabled and THEME.SliderFill or THEME.SliderBg
+    toggle.BackgroundColor3 = enabled and BTN_ENABLED_COLOR or BTN_DISABLED_COLOR
     toggle.BorderSizePixel = 0
     toggle.Text = ""
     toggle.ZIndex = 27
@@ -158,22 +217,32 @@ function Components.CreateToggle(parent, txt, default, cb)
     kc.CornerRadius = UDim.new(1, 0)
     kc.Parent = knob
     
+    -- Label with square background
+    local labelBg = Instance.new("Frame")
+    labelBg.BackgroundColor3 = LABEL_BG_COLOR
+    labelBg.BackgroundTransparency = 0
+    labelBg.BorderSizePixel = 0
+    labelBg.Size = UDim2.new(1, -60, 1, 0)
+    labelBg.Position = UDim2.new(0, 60, 0, 0)
+    labelBg.ZIndex = 25
+    labelBg.Parent = container
+    
     local label = Instance.new("TextLabel")
     label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, -60, 1, 0)
-    label.Position = UDim2.new(0, 60, 0, 0)
+    label.Size = UDim2.new(1, -8, 1, 0)
+    label.Position = UDim2.new(0, 4, 0, 0)
     label.Text = txt
     label.Font = Enum.Font.Gotham
     label.TextSize = 13
-    label.TextColor3 = THEME.Text
+    label.TextColor3 = TEXT_COLOR
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.ZIndex = 26
-    label.Parent = container
+    label.Parent = labelBg
     
     toggle.MouseButton1Click:Connect(function()
         enabled = not enabled
         tween(toggle, TweenInfo.new(0.15), {
-            BackgroundColor3 = enabled and THEME.SliderFill or THEME.SliderBg
+            BackgroundColor3 = enabled and BTN_ENABLED_COLOR or BTN_DISABLED_COLOR
         })
         tween(knob, TweenInfo.new(0.15), {
             Position = enabled and UDim2.new(1, -23, 0, 3) or UDim2.new(0, 3, 0, 3)
@@ -280,26 +349,35 @@ function Components.CreateDropdown(parent, title, options, default, onChange)
     container.ZIndex = 30
     container.Parent = parent
     
+    local labelBg = Instance.new("Frame")
+    labelBg.Size = UDim2.new(0, 100, 0, 36)
+    labelBg.BackgroundColor3 = LABEL_BG_COLOR
+    labelBg.BackgroundTransparency = 0
+    labelBg.BorderSizePixel = 0
+    labelBg.ZIndex = 29
+    labelBg.Parent = container
+    
     local label = Instance.new("TextLabel")
     label.BackgroundTransparency = 1
-    label.Size = UDim2.new(0, 100, 0, 36)
+    label.Size = UDim2.new(1, -8, 1, 0)
+    label.Position = UDim2.new(0, 4, 0, 0)
     label.Text = title .. ":"
     label.Font = Enum.Font.Gotham
     label.TextSize = 13
-    label.TextColor3 = THEME.Text
+    label.TextColor3 = TEXT_COLOR
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.ZIndex = 30
-    label.Parent = container
+    label.Parent = labelBg
     
     local dropBtn = Instance.new("TextButton")
     dropBtn.Size = UDim2.new(1, -110, 0, 32)
     dropBtn.Position = UDim2.new(0, 105, 0, 2)
-    dropBtn.BackgroundColor3 = THEME.Soft
+    dropBtn.BackgroundColor3 = LABEL_BG_COLOR
     dropBtn.BorderSizePixel = 0
     dropBtn.Text = selected .. " ▼"
     dropBtn.Font = Enum.Font.Gotham
     dropBtn.TextSize = 12
-    dropBtn.TextColor3 = THEME.Text
+    dropBtn.TextColor3 = TEXT_COLOR
     dropBtn.ZIndex = 31
     dropBtn.Parent = container
     
@@ -310,7 +388,7 @@ function Components.CreateDropdown(parent, title, options, default, onChange)
     local optionFrame = Instance.new("Frame")
     optionFrame.Size = UDim2.new(1, -110, 0, #options * 28)
     optionFrame.Position = UDim2.new(0, 105, 0, 36)
-    optionFrame.BackgroundColor3 = THEME.Soft
+    optionFrame.BackgroundColor3 = LABEL_BG_COLOR
     optionFrame.BorderSizePixel = 0
     optionFrame.Visible = false
     optionFrame.ZIndex = 100
@@ -331,7 +409,7 @@ function Components.CreateDropdown(parent, title, options, default, onChange)
         optBtn.Text = opt
         optBtn.Font = Enum.Font.Gotham
         optBtn.TextSize = 12
-        optBtn.TextColor3 = THEME.Text
+        optBtn.TextColor3 = TEXT_COLOR
         optBtn.ZIndex = 101
         optBtn.Parent = optionFrame
         
