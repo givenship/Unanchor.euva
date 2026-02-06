@@ -1,5 +1,6 @@
 -- Euva Layout Module
 -- Main frame, sidebar, content area, grid lines
+-- All content ZIndex >= 65 to render above deco ImageLabels (55-60)
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -25,6 +26,9 @@ Layout.Blur = nil
 local player = Players.LocalPlayer
 local guiTransValue = 0.1
 
+local TEXT_COLOR = Color3.fromRGB(0, 0, 0)
+local MUTED_COLOR = Color3.fromRGB(80, 80, 80)
+
 local function tween(obj, info, props)
     local t = TweenService:Create(obj, info, props)
     t:Play()
@@ -35,27 +39,27 @@ function Layout.Create(CoreGui)
     local THEME = Layout.Theme.Colors
     local CONFIG = Layout.Theme.Config
     local ASSETS = Layout.Theme.Assets
-    
+
     -- Clean up old GUI
     local old = CoreGui:FindFirstChild("EuvaMainGUI")
     if old then old:Destroy() end
-    
+
     local oldBlur = Lighting:FindFirstChild("EuvaBlur")
     if oldBlur then oldBlur:Destroy() end
-    
+
     -- Create blur effect
     Layout.Blur = Instance.new("BlurEffect")
     Layout.Blur.Name = "EuvaBlur"
     Layout.Blur.Size = 0
     Layout.Blur.Parent = Lighting
-    
+
     -- Create main ScreenGui
     Layout.Gui = Instance.new("ScreenGui")
     Layout.Gui.Name = "EuvaMainGUI"
     Layout.Gui.ResetOnSpawn = false
     Layout.Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     Layout.Gui.Parent = CoreGui
-    
+
     -- Main frame
     Layout.MainFrame = Instance.new("Frame")
     Layout.MainFrame.Name = "MainFrame"
@@ -68,11 +72,11 @@ function Layout.Create(CoreGui)
     Layout.MainFrame.Visible = false
     Layout.MainFrame.BackgroundTransparency = guiTransValue * 0.7
     Layout.MainFrame.Parent = Layout.Gui
-    
+
     local mainCorner = Instance.new("UICorner")
     mainCorner.CornerRadius = UDim.new(0, 12)
     mainCorner.Parent = Layout.MainFrame
-    
+
     -- Outer lines container (parented to MainFrame)
     local outerLines = Instance.new("Frame")
     outerLines.Name = "OuterLines"
@@ -80,7 +84,7 @@ function Layout.Create(CoreGui)
     outerLines.Size = UDim2.new(1, 0, 1, 0)
     outerLines.ZIndex = 5
     outerLines.Parent = Layout.MainFrame
-    
+
     local function createOuterLine(size, pos)
         local f = Instance.new("Frame")
         f.BackgroundColor3 = THEME.Line
@@ -94,16 +98,15 @@ function Layout.Create(CoreGui)
         f.Parent = outerLines
         return f
     end
-    
-    -- Outer border lines (relative to MainFrame now)
-    createOuterLine(UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 0, 0))   -- top
-    createOuterLine(UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 1, -1))  -- bottom
-    createOuterLine(UDim2.new(0, 1, 1, 0), UDim2.new(0, 0, 0, 0))   -- left
-    createOuterLine(UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0))  -- right
-    
+
+    createOuterLine(UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 0, 0))
+    createOuterLine(UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 1, -1))
+    createOuterLine(UDim2.new(0, 1, 1, 0), UDim2.new(0, 0, 0, 0))
+    createOuterLine(UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0))
+
     -- Grid lines
     Layout.CreateGridLines()
-    
+
     -- Gradient background
     local gradient = Instance.new("Frame")
     gradient.Name = "Gradient"
@@ -113,7 +116,7 @@ function Layout.Create(CoreGui)
     gradient.BorderSizePixel = 0
     gradient.ZIndex = 1
     gradient.Parent = Layout.MainFrame
-    
+
     local gradientUI = Instance.new("UIGradient")
     gradientUI.Color = ColorSequence.new{
         ColorSequenceKeypoint.new(0, THEME.Base),
@@ -121,7 +124,7 @@ function Layout.Create(CoreGui)
     }
     gradientUI.Rotation = 45
     gradientUI.Parent = gradient
-    
+
     -- Intro line for animation
     Layout.IntroLine = Instance.new("Frame")
     Layout.IntroLine.Name = "IntroLine"
@@ -133,26 +136,18 @@ function Layout.Create(CoreGui)
     Layout.IntroLine.BorderSizePixel = 0
     Layout.IntroLine.ZIndex = 999
     Layout.IntroLine.Parent = Layout.Gui
-    
-    -- Create sidebar
+
     Layout.CreateSidebar()
-    
-    -- Create content area
     Layout.CreateContentArea()
-    
-    -- Create top buttons
     Layout.CreateTopButtons()
-    
-    -- Setup dragging
     Layout.SetupDragging()
-    
+
     return Layout.Gui
 end
 
 function Layout.CreateGridLines()
     local THEME = Layout.Theme.Colors
-    
-    -- Vertical line at sidebar edge (x=180)
+
     local vLine1 = Instance.new("Frame")
     vLine1.Size = UDim2.new(0, 1, 1, 0)
     vLine1.Position = UDim2.new(0, 180, 0, 0)
@@ -162,7 +157,6 @@ function Layout.CreateGridLines()
     vLine1.ZIndex = 70
     vLine1.Parent = Layout.MainFrame
 
-    -- Vertical line at content divider (x=490)
     local vLine2 = Instance.new("Frame")
     vLine2.Size = UDim2.new(0, 1, 0, 235)
     vLine2.Position = UDim2.new(0, 490, 0, 60)
@@ -172,7 +166,6 @@ function Layout.CreateGridLines()
     vLine2.ZIndex = 70
     vLine2.Parent = Layout.MainFrame
 
-    -- Horizontal line at header separator (y=60)
     local hLine1 = Instance.new("Frame")
     hLine1.Size = UDim2.new(1, -190, 0, 1)
     hLine1.Position = UDim2.new(0, 190, 0, 60)
@@ -182,7 +175,6 @@ function Layout.CreateGridLines()
     hLine1.ZIndex = 70
     hLine1.Parent = Layout.MainFrame
 
-    -- Horizontal line at content divider (y=295)
     local hLine2 = Instance.new("Frame")
     hLine2.Size = UDim2.new(1, -190, 0, 1)
     hLine2.Position = UDim2.new(0, 190, 0, 295)
@@ -196,15 +188,14 @@ end
 function Layout.CreateSidebar()
     local THEME = Layout.Theme.Colors
     local ASSETS = Layout.Theme.Assets
-    
+
     Layout.Sidebar = Instance.new("Frame")
     Layout.Sidebar.Name = "Sidebar"
     Layout.Sidebar.Size = UDim2.new(0, 180, 1, 0)
     Layout.Sidebar.BackgroundTransparency = 1
     Layout.Sidebar.ZIndex = 10
     Layout.Sidebar.Parent = Layout.MainFrame
-    
-    -- Logo
+
     local logo = Instance.new("ImageLabel")
     logo.Name = "EuvaLogo"
     logo.Size = UDim2.new(0, 192, 0, 188)
@@ -214,8 +205,7 @@ function Layout.CreateSidebar()
     logo.ImageTransparency = 0
     logo.ZIndex = 11
     logo.Parent = Layout.Sidebar
-    
-    -- Tab container
+
     Layout.TabContainer = Instance.new("Frame")
     Layout.TabContainer.Name = "TabContainer"
     Layout.TabContainer.Size = UDim2.new(1, -20, 1, -190)
@@ -223,22 +213,19 @@ function Layout.CreateSidebar()
     Layout.TabContainer.BackgroundTransparency = 1
     Layout.TabContainer.ZIndex = 11
     Layout.TabContainer.Parent = Layout.Sidebar
-    
+
     local tabLayout = Instance.new("UIListLayout")
     tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
     tabLayout.Padding = UDim.new(0, 8)
     tabLayout.Parent = Layout.TabContainer
-    
-    -- User panel
+
     Layout.CreateUserPanel()
-    
-    -- Drag toggle button
     Layout.CreateDragToggle()
 end
 
 function Layout.CreateContentArea()
     local THEME = Layout.Theme.Colors
-    
+
     Layout.ContentArea = Instance.new("Frame")
     Layout.ContentArea.Name = "ContentArea"
     Layout.ContentArea.Size = UDim2.new(1, -200, 1, -40)
@@ -246,8 +233,8 @@ function Layout.CreateContentArea()
     Layout.ContentArea.BackgroundTransparency = 1
     Layout.ContentArea.ZIndex = 10
     Layout.ContentArea.Parent = Layout.MainFrame
-    
-    -- Content title
+
+    -- ContentTitle: NO F0DCE6 background (excluded per user)
     Layout.ContentTitle = Instance.new("TextLabel")
     Layout.ContentTitle.Name = "ContentTitle"
     Layout.ContentTitle.Size = UDim2.new(1, -280, 0, 40)
@@ -255,38 +242,37 @@ function Layout.CreateContentArea()
     Layout.ContentTitle.Text = "Welcome"
     Layout.ContentTitle.Font = Enum.Font.Gotham
     Layout.ContentTitle.TextSize = 28
-    Layout.ContentTitle.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Layout.ContentTitle.TextColor3 = TEXT_COLOR
     Layout.ContentTitle.TextXAlignment = Enum.TextXAlignment.Left
-    Layout.ContentTitle.ZIndex = 20
+    Layout.ContentTitle.ZIndex = 67
     Layout.ContentTitle.Parent = Layout.ContentArea
-    
+
     -- Underline for ContentTitle (animated)
     Layout.ContentUnderline = Instance.new("Frame")
     Layout.ContentUnderline.Name = "ContentUnderline"
     Layout.ContentUnderline.Size = UDim2.new(0, 0, 0, 2)
     Layout.ContentUnderline.Position = UDim2.new(0, 0, 1, -2)
-    Layout.ContentUnderline.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    Layout.ContentUnderline.BackgroundColor3 = TEXT_COLOR
     Layout.ContentUnderline.BackgroundTransparency = 0
     Layout.ContentUnderline.BorderSizePixel = 0
-    Layout.ContentUnderline.ZIndex = 21
+    Layout.ContentUnderline.ZIndex = 68
     Layout.ContentUnderline.Parent = Layout.ContentTitle
-    
+
     -- Text cursor for ContentTitle (animated)
     Layout.ContentCursor = Instance.new("Frame")
     Layout.ContentCursor.Name = "ContentCursor"
     Layout.ContentCursor.Size = UDim2.new(0, 2, 0, 24)
     Layout.ContentCursor.Position = UDim2.new(0, 0, 0.5, -12)
-    Layout.ContentCursor.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    Layout.ContentCursor.BackgroundColor3 = TEXT_COLOR
     Layout.ContentCursor.BackgroundTransparency = 0
     Layout.ContentCursor.BorderSizePixel = 0
-    Layout.ContentCursor.ZIndex = 21
+    Layout.ContentCursor.ZIndex = 68
     Layout.ContentCursor.Visible = false
     Layout.ContentCursor.Parent = Layout.ContentTitle
-    
-    -- Server info
+
     Layout.CreateServerInfo()
-    
-    -- Content scroll frame
+
+    -- Content scroll: ZIndex 65 (above deco at 55-60)
     Layout.ContentScroll = Instance.new("ScrollingFrame")
     Layout.ContentScroll.Name = "ContentScroll"
     Layout.ContentScroll.Size = UDim2.new(1, 0, 1, -60)
@@ -297,9 +283,9 @@ function Layout.CreateContentArea()
     Layout.ContentScroll.ScrollBarImageColor3 = Color3.fromRGB(200, 180, 190)
     Layout.ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     Layout.ContentScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    Layout.ContentScroll.ZIndex = 20
+    Layout.ContentScroll.ZIndex = 65
     Layout.ContentScroll.Parent = Layout.ContentArea
-    
+
     local contentLayout = Instance.new("UIListLayout")
     contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
     contentLayout.Padding = UDim.new(0, 15)
@@ -307,23 +293,19 @@ function Layout.CreateContentArea()
 end
 
 function Layout.PlayTitleAnimation()
-    -- Animate underline expanding from left
     Layout.ContentUnderline.Size = UDim2.new(0, 0, 0, 2)
     Layout.ContentUnderline.BackgroundTransparency = 0
-    
+
     tween(Layout.ContentUnderline, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
         Size = UDim2.new(1, 0, 0, 2)
     })
-    
-    -- Show blinking cursor
+
     Layout.ContentCursor.Visible = true
     Layout.ContentCursor.BackgroundTransparency = 0
-    
-    -- Position cursor at end of text
+
     local textWidth = Layout.ContentTitle.TextBounds and Layout.ContentTitle.TextBounds.X or 80
     Layout.ContentCursor.Position = UDim2.new(0, textWidth + 4, 0.5, -12)
-    
-    -- Blink cursor then fade
+
     task.spawn(function()
         for i = 1, 3 do
             Layout.ContentCursor.BackgroundTransparency = 0
@@ -332,8 +314,7 @@ function Layout.PlayTitleAnimation()
             task.wait(0.08)
         end
         Layout.ContentCursor.Visible = false
-        
-        -- Fade underline after 0.5s total
+
         task.wait(0.02)
         tween(Layout.ContentUnderline, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
             BackgroundTransparency = 1
@@ -343,7 +324,7 @@ end
 
 function Layout.CreateServerInfo()
     local THEME = Layout.Theme.Colors
-    
+
     local serverInfoFrame = Instance.new("Frame")
     serverInfoFrame.Name = "ServerInfoFrame"
     serverInfoFrame.Size = UDim2.new(0, 300, 0, 50)
@@ -351,42 +332,42 @@ function Layout.CreateServerInfo()
     serverInfoFrame.BackgroundColor3 = THEME.Soft
     serverInfoFrame.BackgroundTransparency = 0.35
     serverInfoFrame.BorderSizePixel = 0
-    serverInfoFrame.ZIndex = 25
+    serverInfoFrame.ZIndex = 68
     serverInfoFrame.Parent = Layout.ContentArea
-    
+
     local sCorner = Instance.new("UICorner")
     sCorner.CornerRadius = UDim.new(0, 8)
     sCorner.Parent = serverInfoFrame
-    
+
     local sPad = Instance.new("UIPadding")
     sPad.PaddingLeft = UDim.new(0, 10)
     sPad.PaddingRight = UDim.new(0, 10)
     sPad.PaddingTop = UDim.new(0, 6)
     sPad.PaddingBottom = UDim.new(0, 6)
     sPad.Parent = serverInfoFrame
-    
+
     local sLayout = Instance.new("UIListLayout")
     sLayout.FillDirection = Enum.FillDirection.Vertical
     sLayout.SortOrder = Enum.SortOrder.LayoutOrder
     sLayout.Padding = UDim.new(0, 2)
     sLayout.Parent = serverInfoFrame
-    
+
     Layout.GameNameLabel = Instance.new("TextLabel")
     Layout.GameNameLabel.BackgroundTransparency = 1
     Layout.GameNameLabel.Size = UDim2.new(1, 0, 0, 12)
     Layout.GameNameLabel.Font = Enum.Font.Gotham
     Layout.GameNameLabel.TextSize = 11
-    Layout.GameNameLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Layout.GameNameLabel.TextColor3 = TEXT_COLOR
     Layout.GameNameLabel.TextXAlignment = Enum.TextXAlignment.Right
-    Layout.GameNameLabel.ZIndex = 26
+    Layout.GameNameLabel.ZIndex = 69
     Layout.GameNameLabel.Parent = serverInfoFrame
-    
+
     local jobRow = Instance.new("Frame")
     jobRow.BackgroundTransparency = 1
     jobRow.Size = UDim2.new(1, 0, 0, 12)
-    jobRow.ZIndex = 26
+    jobRow.ZIndex = 69
     jobRow.Parent = serverInfoFrame
-    
+
     Layout.JobTextBox = Instance.new("TextBox")
     Layout.JobTextBox.BackgroundTransparency = 1
     Layout.JobTextBox.Size = UDim2.new(1, -56, 1, 0)
@@ -394,11 +375,11 @@ function Layout.CreateServerInfo()
     Layout.JobTextBox.TextEditable = true
     Layout.JobTextBox.Font = Enum.Font.Gotham
     Layout.JobTextBox.TextSize = 11
-    Layout.JobTextBox.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Layout.JobTextBox.TextColor3 = TEXT_COLOR
     Layout.JobTextBox.TextXAlignment = Enum.TextXAlignment.Right
-    Layout.JobTextBox.ZIndex = 26
+    Layout.JobTextBox.ZIndex = 69
     Layout.JobTextBox.Parent = jobRow
-    
+
     local copyJob = Instance.new("TextButton")
     copyJob.Size = UDim2.new(0, 56, 1, 0)
     copyJob.Position = UDim2.new(1, -56, 0, 0)
@@ -406,21 +387,21 @@ function Layout.CreateServerInfo()
     copyJob.Text = "[Copy]"
     copyJob.Font = Enum.Font.GothamBold
     copyJob.TextSize = 11
-    copyJob.TextColor3 = Color3.fromRGB(0, 0, 0)
+    copyJob.TextColor3 = TEXT_COLOR
     copyJob.TextWrapped = true
-    copyJob.ZIndex = 27
+    copyJob.ZIndex = 70
     copyJob.Parent = jobRow
-    
+
     Layout.PlayerCountLabel = Instance.new("TextLabel")
     Layout.PlayerCountLabel.BackgroundTransparency = 1
     Layout.PlayerCountLabel.Size = UDim2.new(1, 0, 0, 12)
     Layout.PlayerCountLabel.Font = Enum.Font.Gotham
     Layout.PlayerCountLabel.TextSize = 11
-    Layout.PlayerCountLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Layout.PlayerCountLabel.TextColor3 = TEXT_COLOR
     Layout.PlayerCountLabel.TextXAlignment = Enum.TextXAlignment.Right
-    Layout.PlayerCountLabel.ZIndex = 26
+    Layout.PlayerCountLabel.ZIndex = 69
     Layout.PlayerCountLabel.Parent = serverInfoFrame
-    
+
     copyJob.MouseButton1Click:Connect(function()
         local ok = Layout.Components.TryClipboard(Layout.JobTextBox.Text)
         if not ok then
@@ -432,97 +413,96 @@ end
 
 function Layout.CreateUserPanel()
     local THEME = Layout.Theme.Colors
-    
+
     local userPanel = Instance.new("Frame")
     userPanel.Name = "UserPanel"
     userPanel.Size = UDim2.new(1, -20, 0, 90)
     userPanel.Position = UDim2.new(0, 10, 1, -100)
     userPanel.BackgroundTransparency = 1
-    userPanel.ZIndex = 20
+    userPanel.ZIndex = 65
     userPanel.Parent = Layout.Sidebar
-    
+
     local userPanelLayout = Instance.new("UIListLayout")
     userPanelLayout.FillDirection = Enum.FillDirection.Vertical
     userPanelLayout.SortOrder = Enum.SortOrder.LayoutOrder
     userPanelLayout.Padding = UDim.new(0, 2)
     userPanelLayout.Parent = userPanel
-    
+
     local userTopRow = Instance.new("Frame")
     userTopRow.BackgroundTransparency = 1
     userTopRow.Size = UDim2.new(1, 0, 0, 40)
-    userTopRow.ZIndex = 20
+    userTopRow.ZIndex = 65
     userTopRow.Parent = userPanel
-    
+
     local avatar = Instance.new("ImageLabel")
     avatar.Size = UDim2.new(0, 36, 0, 36)
     avatar.Position = UDim2.new(0, 0, 0, 2)
     avatar.BackgroundTransparency = 1
-    avatar.ZIndex = 21
+    avatar.ZIndex = 66
     avatar.Parent = userTopRow
-    
+
     local aCorner = Instance.new("UICorner")
     aCorner.CornerRadius = UDim.new(1, 0)
     aCorner.Parent = avatar
-    
+
     local nameCol = Instance.new("Frame")
     nameCol.BackgroundTransparency = 1
     nameCol.Position = UDim2.new(0, 42, 0, 0)
     nameCol.Size = UDim2.new(1, -42, 1, 0)
-    nameCol.ZIndex = 21
+    nameCol.ZIndex = 66
     nameCol.Parent = userTopRow
-    
+
     local nameLayout = Instance.new("UIListLayout")
     nameLayout.FillDirection = Enum.FillDirection.Vertical
     nameLayout.SortOrder = Enum.SortOrder.LayoutOrder
     nameLayout.Padding = UDim.new(0, 0)
     nameLayout.Parent = nameCol
-    
-    -- User Information labels (NO square background per user request)
+
+    -- User Information: NO F0DCE6 background (excluded per user)
     local usernameLabel = Instance.new("TextLabel")
     usernameLabel.Name = "UserInformation"
     usernameLabel.BackgroundTransparency = 1
     usernameLabel.Size = UDim2.new(1, 0, 0, 18)
     usernameLabel.Font = Enum.Font.GothamBold
     usernameLabel.TextSize = 13
-    usernameLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
+    usernameLabel.TextColor3 = TEXT_COLOR
     usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
     usernameLabel.Text = "@" .. player.Name
-    usernameLabel.ZIndex = 21
+    usernameLabel.ZIndex = 67
     usernameLabel.Parent = nameCol
-    
+
     local displayLabel = Instance.new("TextLabel")
     displayLabel.Name = "UserInformation"
     displayLabel.BackgroundTransparency = 1
     displayLabel.Size = UDim2.new(1, 0, 0, 18)
     displayLabel.Font = Enum.Font.Gotham
     displayLabel.TextSize = 12
-    displayLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
+    displayLabel.TextColor3 = TEXT_COLOR
     displayLabel.TextXAlignment = Enum.TextXAlignment.Left
     displayLabel.Text = player.DisplayName .. "  |  ID: " .. player.UserId
-    displayLabel.ZIndex = 21
+    displayLabel.ZIndex = 67
     displayLabel.Parent = nameCol
-    
+
     Layout.StatsLabel = Instance.new("TextLabel")
     Layout.StatsLabel.BackgroundTransparency = 1
     Layout.StatsLabel.Size = UDim2.new(1, 0, 0, 16)
     Layout.StatsLabel.Font = Enum.Font.Gotham
     Layout.StatsLabel.TextSize = 11
-    Layout.StatsLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Layout.StatsLabel.TextColor3 = TEXT_COLOR
     Layout.StatsLabel.TextXAlignment = Enum.TextXAlignment.Left
-    Layout.StatsLabel.ZIndex = 21
+    Layout.StatsLabel.ZIndex = 67
     Layout.StatsLabel.Parent = userPanel
-    
+
     Layout.MoneyLabel = Instance.new("TextLabel")
     Layout.MoneyLabel.BackgroundTransparency = 1
     Layout.MoneyLabel.Size = UDim2.new(1, 0, 0, 16)
     Layout.MoneyLabel.Font = Enum.Font.Gotham
     Layout.MoneyLabel.TextSize = 11
-    Layout.MoneyLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Layout.MoneyLabel.TextColor3 = TEXT_COLOR
     Layout.MoneyLabel.TextXAlignment = Enum.TextXAlignment.Left
-    Layout.MoneyLabel.ZIndex = 21
+    Layout.MoneyLabel.ZIndex = 67
     Layout.MoneyLabel.Parent = userPanel
-    
-    -- Load avatar
+
     task.spawn(function()
         local success, thumb = pcall(function()
             return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
@@ -535,7 +515,7 @@ end
 
 function Layout.CreateDragToggle()
     local ASSETS = Layout.Theme.Assets
-    
+
     local dragButton = Instance.new("ImageButton")
     dragButton.Name = "DragToggle"
     dragButton.Size = UDim2.new(0, 26, 0, 26)
@@ -543,17 +523,17 @@ function Layout.CreateDragToggle()
     dragButton.BackgroundTransparency = 1
     dragButton.Image = ASSETS.MoveIcon
     dragButton.ImageTransparency = 0.2
-    dragButton.ZIndex = 40
+    dragButton.ZIndex = 67
     dragButton.Parent = Layout.Sidebar
-    
+
     local dragStroke = Instance.new("UIStroke")
     dragStroke.Thickness = 2
     dragStroke.Transparency = 1
     dragStroke.Color = Color3.fromRGB(244, 167, 187)
     dragStroke.Parent = dragButton
-    
+
     Layout.DragEnabled = false
-    
+
     dragButton.MouseButton1Click:Connect(function()
         Layout.DragEnabled = not Layout.DragEnabled
         dragStroke.Transparency = Layout.DragEnabled and 0 or 1
@@ -564,7 +544,7 @@ end
 function Layout.CreateTopButtons()
     local THEME = Layout.Theme.Colors
     local CONFIG = Layout.Theme.Config
-    
+
     local function topBtn(symbol, xOff)
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(0, 40, 0, 40)
@@ -574,20 +554,19 @@ function Layout.CreateTopButtons()
         btn.Text = symbol
         btn.Font = Enum.Font.GothamBold
         btn.TextSize = 24
-        btn.TextColor3 = Color3.fromRGB(0, 0, 0)
+        btn.TextColor3 = TEXT_COLOR
         btn.ZIndex = 80
         btn.Parent = Layout.MainFrame
-        
+
         local c = Instance.new("UICorner")
         c.CornerRadius = UDim.new(0, 8)
         c.Parent = btn
         return btn
     end
-    
+
     local closeButton = topBtn("×", -50)
     local minimizeButton = topBtn("−", -100)
-    
-    -- Discord button
+
     local discordButton = Instance.new("TextButton")
     discordButton.Size = UDim2.new(0, 100, 0, 40)
     discordButton.Position = UDim2.new(1, -160, 0, 10)
@@ -599,22 +578,22 @@ function Layout.CreateTopButtons()
     discordButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     discordButton.ZIndex = 80
     discordButton.Parent = Layout.MainFrame
-    
+
     local discordCorner = Instance.new("UICorner")
     discordCorner.CornerRadius = UDim.new(0, 8)
     discordCorner.Parent = discordButton
-    
+
     discordButton.MouseButton1Click:Connect(function()
         if not Layout.Components.TryClipboard(CONFIG.DiscordInvite) then
             Layout.Components.Notify("Clipboard blocked. Link: " .. CONFIG.DiscordInvite)
         end
     end)
-    
+
     closeButton.MouseButton1Click:Connect(function()
         if Layout.Blur then Layout.Blur:Destroy() end
         Layout.Gui:Destroy()
     end)
-    
+
     local minimized = false
     minimizeButton.MouseButton1Click:Connect(function()
         minimized = not minimized
@@ -631,18 +610,18 @@ end
 function Layout.SetupDragging()
     local CoreGui = game:GetService("CoreGui")
     local dragging, dragStart, startPos = false, nil, nil
-    
+
     Layout.MainFrame.InputBegan:Connect(function(input)
         if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-        
+
         local mouseY = input.Position.Y
         local frameTop = Layout.MainFrame.AbsolutePosition.Y
         if mouseY - frameTop > 60 then return end
-        
+
         local success, objs = pcall(function()
             return CoreGui:GetGuiObjectsAtPosition(input.Position.X, input.Position.Y)
         end)
-        
+
         if success and objs then
             for _, o in ipairs(objs) do
                 if o:IsA("TextButton") or o:IsA("ImageButton") or o:IsA("TextBox") or o:IsA("ScrollingFrame") then
@@ -650,18 +629,18 @@ function Layout.SetupDragging()
                 end
             end
         end
-        
+
         dragging = true
         dragStart = input.Position
         startPos = Layout.MainFrame.Position
     end)
-    
+
     Layout.MainFrame.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
         end
     end)
-    
+
     UserInputService.InputChanged:Connect(function(input)
         if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
         if not dragging then return end
@@ -675,7 +654,7 @@ end
 
 function Layout.CreateTab(tabName)
     local THEME = Layout.Theme.Colors
-    
+
     local tabBtn = Instance.new("TextButton")
     tabBtn.Size = UDim2.new(1, 0, 0, 36)
     tabBtn.BackgroundColor3 = THEME.Soft
@@ -685,49 +664,48 @@ function Layout.CreateTab(tabName)
     tabBtn.Text = tabName
     tabBtn.Font = Enum.Font.Gotham
     tabBtn.TextSize = 14
-    tabBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+    tabBtn.TextColor3 = MUTED_COLOR
     tabBtn.TextXAlignment = Enum.TextXAlignment.Left
-    tabBtn.ZIndex = 12
+    tabBtn.ZIndex = 67
     tabBtn.Parent = Layout.TabContainer
     Layout.TabButtons[tabName] = tabBtn
-    
+
     local pad = Instance.new("UIPadding")
     pad.PaddingLeft = UDim.new(0, 15)
     pad.Parent = tabBtn
-    
+
     local tabFrame = Instance.new("Frame")
     tabFrame.Name = tabName .. "Content"
     tabFrame.BackgroundTransparency = 1
     tabFrame.Size = UDim2.new(1, 0, 1, 0)
     tabFrame.Visible = false
-    tabFrame.ZIndex = 22
+    tabFrame.ZIndex = 65
     tabFrame.Parent = Layout.ContentScroll
     Layout.TabFrames[tabName] = tabFrame
-    
+
     local lay = Instance.new("UIListLayout")
     lay.Padding = UDim.new(0, 12)
     lay.SortOrder = Enum.SortOrder.LayoutOrder
     lay.Parent = tabFrame
-    
+
     local function select()
         for _, f in pairs(Layout.TabFrames) do f.Visible = false end
         for _, b in pairs(Layout.TabButtons) do
             b.BackgroundTransparency = 1
-            b.TextColor3 = Color3.fromRGB(80, 80, 80)
+            b.TextColor3 = MUTED_COLOR
         end
-        
+
         tabFrame.Visible = true
         tabBtn.BackgroundTransparency = 0
-        tabBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+        tabBtn.TextColor3 = TEXT_COLOR
         Layout.ContentTitle.Text = tabName
         Layout.CurrentTab = tabFrame
-        
-        -- Play title animation
+
         Layout.PlayTitleAnimation()
     end
-    
+
     tabBtn.MouseButton1Click:Connect(select)
-    
+
     if not Layout.CurrentTab then select() end
     return tabFrame
 end
@@ -752,14 +730,14 @@ function Layout.PlayIntroAnimation()
         tween(Layout.IntroLine, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Size = UDim2.new(0, 820, 0, 2)
         }).Completed:Wait()
-        
+
         Layout.MainFrame.Size = UDim2.new(0, 820, 0, 2)
         Layout.MainFrame.Visible = true
-        
+
         tween(Layout.MainFrame, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Size = UDim2.new(0, Layout.Theme.Config.GuiSize.Width, 0, Layout.Theme.Config.GuiSize.Height)
         }).Completed:Wait()
-        
+
         tween(Layout.IntroLine, TweenInfo.new(0.15), {BackgroundTransparency = 1}).Completed:Wait()
         Layout.IntroLine:Destroy()
     end)
@@ -774,7 +752,7 @@ end
 function Layout.StartStatsLoop()
     local fps = 60
     local acc, frames = 0, 0
-    
+
     RunService.RenderStepped:Connect(function(dt)
         acc = acc + dt
         frames = frames + 1
@@ -783,7 +761,7 @@ function Layout.StartStatsLoop()
             acc, frames = 0, 0
         end
     end)
-    
+
     local function getStat(name)
         local ls = player:FindFirstChild("leaderstats")
         if not ls then return nil end
@@ -794,19 +772,19 @@ function Layout.StartStatsLoop()
         end
         return nil
     end
-    
+
     task.spawn(function()
         while Layout.Gui and Layout.Gui.Parent do
             local lv = getStat("LV") or getStat("Level") or 0
             local wins = getStat("Wins") or 0
             local money = getStat("Money") or getStat("Cash") or 0
-            
+
             Layout.StatsLabel.Text = ("FPS: %d  |  LV: %s  |  Wins: %s"):format(fps, tostring(lv), tostring(wins))
             Layout.MoneyLabel.Text = ("Money: %s"):format(tostring(money))
             task.wait(0.25)
         end
     end)
-    
+
     Players.PlayerAdded:Connect(function() Layout.UpdateServerInfo() end)
     Players.PlayerRemoving:Connect(function() Layout.UpdateServerInfo() end)
     Layout.UpdateServerInfo()
