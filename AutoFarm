@@ -1,114 +1,114 @@
 -- AutoFarm
--- Monsters: pathfind to nearest Human, click at distance <= 7
--- Humans: pathfind to nearest Monster, click at distance <= 4 until dead
--- Direct follow within 20 studs with velocity prediction
--- Jump every 1s, anti-stuck click after 3s, Y-distance priority
+-- Monsters team -> hunt Humans, attack at 7 studs
+-- Humans team -> hunt Monsters, attack at 4 studs until dead
+-- Direct follow within 20 studs, pathfind beyond
+-- Velocity prediction, jump every 1s, anti-stuck click
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local PathfindingService = game:GetService("PathfindingService")
 local LP = Players.LocalPlayer
 
+-- ========== CONFIG ==========
+local MONSTER_ATK_RANGE = 7
+local HUMAN_ATK_RANGE = 4
+local DIRECT_RANGE = 20
+local JUMP_EVERY = 1
+local STUCK_TIME = 3
+local STUCK_DIST = 1
+local PREDICT = 0.3
+local Y_PENALTY = 3
+local MAX_Y = 50
+local JUMP_H = 8.5
+local MAX_OBSTACLE = 9
+
+-- ========== STATE ==========
 local running = false
+local lastJump = 0
+local stuckStart = nil
+local lastPos = nil
 
-local MONSTER_RANGE = 7
-local HUMAN_RANGE = 4
-local DIRECT_FOLLOW_RANGE = 20
-local JUMP_INTERVAL = 1
-local STUCK_CLICK_TIME = 3
-local STUCK_MOVE_THRESHOLD = 1
-local REPATH_INTERVAL = 0.01
-local PREDICT_AHEAD = 0.3       -- seconds ahead to predict target position
-local Y_PENALTY = 3             -- multiplier for Y distance in target scoring
-local MAX_Y_DIFF = 50           -- ignore targets with Y diff greater than this
+-- ========== RAYCAST ==========
+local rayP = RaycastParams.new()
+rayP.FilterType = Enum.RaycastFilterType.Exclude
 
-local JUMP_HEIGHT = 8.5
-local MAX_JUMP_STUDS = 9
-
-local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
-
-local function updateRayFilter()
-    local t = {}
+local function refreshRay()
+    local list = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        if p.Character then t[#t + 1] = p.Character end
+        if p.Character then list[#list + 1] = p.Character end
     end
-    rayParams.FilterDescendantsInstances = t
+    rayP.FilterDescendantsInstances = list
 end
 
-local function getRoot(player)
-    local c = player.Character
+-- ========== HELPERS ==========
+local function root(p)
+    local c = p.Character
     return c and c:FindFirstChild("HumanoidRootPart")
 end
 
-local function getHumanoid(player)
-    local c = player.Character
+local function hum(p)
+    local c = p.Character
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
-local function isAlive(player)
-    local hum = getHumanoid(player)
-    return hum and hum.Health > 0
+local function alive(p)
+    local h = hum(p)
+    return h and h.Health > 0
 end
 
-local function getTeam(player)
-    return player.Team and player.Team.Name or nil
+local function team(p)
+    return p.Team and p.Team.Name
 end
 
-local function isEnemy(player)
-    local my = getTeam(LP)
-    local their = getTeam(player)
-    if not my or not their then return false end
-    if my == "Monsters" then return their == "Humans" end
-    if my == "Humans" then return their == "Monsters" end
+local function enemy(p)
+    if p == LP then return false end
+    local my = team(LP)
+    local their = team(p)
+    if my == "Monsters" and their == "Humans" then return true end
+    if my == "Humans" and their == "Monsters" then return true end
     return false
 end
 
-local function distanceTo(player)
-    local a = getRoot(LP)
-    local b = getRoot(player)
+local function dist(p)
+    local a, b = root(LP), root(p)
     if not a or not b then return math.huge end
     return (a.Position - b.Position).Magnitude
 end
 
-local function yDiff(player)
-    local a = getRoot(LP)
-    local b = getRoot(player)
+local function score(p)
+    local a, b = root(LP), root(p)
     if not a or not b then return math.huge end
-    return math.abs(a.Position.Y - b.Position.Y)
+    local d = a.Position - b.Position
+    local horiz = math.sqrt(d.X * d.X + d.Z * d.Z)
+    local vert = math.abs(d.Y)
+    if vert > MAX_Y then return math.huge end
+    return horiz + vert * Y_PENALTY
 end
 
--- Score = horizontal distance + (Y difference * penalty)
--- Lower score = better target
-local function targetScore(player)
-    local a = getRoot(LP)
-    local b = getRoot(player)
-    if not a or not b then return math.huge end
-    local diff = a.Position - b.Position
-    local horizDist = Vector2.new(diff.X, diff.Z).Magnitude
-    local yDist = math.abs(diff.Y)
-    if yDist > MAX_Y_DIFF then return math.huge end
-    return horizDist + yDist * Y_PENALTY
+local function atkRange()
+    return team(LP) == "Monsters" and MONSTER_ATK_RANGE or HUMAN_ATK_RANGE
 end
 
-local function findNearestEnemy()
-    local best = nil
-    local bestScore = math.huge
-
+local function findTarget()
+    local best, bestS = nil, math.huge
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LP and isEnemy(p) and isAlive(p) then
-            local score = targetScore(p)
-            if score < bestScore then
-                best = p
-                bestScore = score
+        if enemy(p) and alive(p) then
+            local s = score(p)
+            if s < bestS then
+                best, bestS = p, s
             end
         end
     end
-
-    return best, best and distanceTo(best) or math.huge
+    return best
 end
 
-local function click()
+local function predict(p)
+    local r = root(p)
+    if not r then return nil end
+    local v = r.AssemblyLinearVelocity
+    return r.Position + Vector3.new(v.X, 0, v.Z) * PREDICT
+end
+
+local function press()
     pcall(function()
         mouse1press()
         task.defer(function()
@@ -117,337 +117,295 @@ local function click()
     end)
 end
 
-local function getAttackRange()
-    return getTeam(LP) == "Monsters" and MONSTER_RANGE or HUMAN_RANGE
+-- ========== MOVEMENT ==========
+local function moveTo(pos)
+    local h = hum(LP)
+    if h then h:MoveTo(pos) end
 end
 
--- Predict where target will be in PREDICT_AHEAD seconds
-local function predictPosition(player)
-    local root = getRoot(player)
-    if not root then return nil end
-    local vel = root.AssemblyLinearVelocity
-    -- only use horizontal velocity for prediction
-    local horizVel = Vector3.new(vel.X, 0, vel.Z)
-    return root.Position + horizVel * PREDICT_AHEAD
+local function stop()
+    local h = hum(LP)
+    local r = root(LP)
+    if h and r then h:MoveTo(r.Position) end
 end
 
--- ========== OBSTACLE DETECTION ==========
+local function face(target)
+    local a, b = root(LP), root(target)
+    if not a or not b then return end
+    local d = (b.Position - a.Position)
+    local flat = Vector3.new(d.X, 0, d.Z)
+    if flat.Magnitude < 0.1 then return end
+    a.CFrame = CFrame.lookAt(a.Position, a.Position + flat.Unit)
+end
 
-local function getObstacleHeight()
-    local root = getRoot(LP)
-    if not root then return 0 end
-    updateRayFilter()
-    local footPos = root.Position - Vector3.new(0, 2.5, 0)
-    local dir = root.CFrame.LookVector * 4
-    local hitLow = workspace:Raycast(footPos, dir, rayParams)
-    if not hitLow then return 0 end
+local function jump()
+    local h = hum(LP)
+    if not h then return end
+    h.JumpHeight = JUMP_H
+    h.Jump = true
+end
+
+local function tryJump()
+    local now = tick()
+    if now - lastJump >= JUMP_EVERY then
+        jump()
+        lastJump = now
+    end
+end
+
+-- ========== OBSTACLE ==========
+local function obstacleHeight()
+    local r = root(LP)
+    if not r then return 0 end
+    refreshRay()
+    local foot = r.Position - Vector3.new(0, 2.5, 0)
+    local fwd = r.CFrame.LookVector * 4
+    if not workspace:Raycast(foot, fwd, rayP) then return 0 end
     for h = 1, 16 do
-        local scanHit = workspace:Raycast(footPos + Vector3.new(0, h, 0), dir, rayParams)
-        if not scanHit then return h end
+        if not workspace:Raycast(foot + Vector3.new(0, h, 0), fwd, rayP) then
+            return h
+        end
     end
     return 99
 end
 
-local function hasGapAhead()
-    local root = getRoot(LP)
-    if not root then return false end
-    updateRayFilter()
-    local checkPos = root.Position + root.CFrame.LookVector * 5
-    local ground = workspace:Raycast(checkPos, Vector3.new(0, -20, 0), rayParams)
-    if not ground then return true end
-    return (root.Position.Y - ground.Position.Y) > 15
-end
-
-local function doJump()
-    local hum = getHumanoid(LP)
-    if hum then
-        hum.JumpHeight = JUMP_HEIGHT
-        hum.Jump = true
-    end
-end
-
-local function trySidestep()
-    local root = getRoot(LP)
-    local hum = getHumanoid(LP)
-    if not root or not hum then return end
-    updateRayFilter()
-
-    local hitR = workspace:Raycast(root.Position, root.CFrame.RightVector * 6, rayParams)
-    local hitL = workspace:Raycast(root.Position, -root.CFrame.RightVector * 6, rayParams)
-
-    if not hitR then
-        hum:MoveTo(root.Position + root.CFrame.RightVector * 5)
-    elseif not hitL then
-        hum:MoveTo(root.Position - root.CFrame.RightVector * 5)
+local function sidestep()
+    local r = root(LP)
+    local h = hum(LP)
+    if not r or not h then return end
+    refreshRay()
+    local rHit = workspace:Raycast(r.Position, r.CFrame.RightVector * 6, rayP)
+    local lHit = workspace:Raycast(r.Position, -r.CFrame.RightVector * 6, rayP)
+    if not rHit then
+        h:MoveTo(r.Position + r.CFrame.RightVector * 5)
+    elseif not lHit then
+        h:MoveTo(r.Position - r.CFrame.RightVector * 5)
     else
-        doJump()
+        jump()
     end
     task.wait(0.3)
 end
 
--- ========== PATHFINDING ==========
+local function handleObstacle()
+    local h = obstacleHeight()
+    if h >= 2 and h <= MAX_OBSTACLE then
+        jump()
+        return true
+    elseif h > MAX_OBSTACLE then
+        sidestep()
+        return true
+    end
+    return false
+end
 
-local function computePath(targetPos)
-    local root = getRoot(LP)
-    if not root then return nil, nil end
+-- ========== STUCK DETECTION ==========
+local function updateStuck()
+    local r = root(LP)
+    if not r then return end
+    local pos = r.Position
+    local now = tick()
 
+    if lastPos and (pos - lastPos).Magnitude < STUCK_DIST then
+        if not stuckStart then
+            stuckStart = now
+        elseif now - stuckStart >= STUCK_TIME then
+            press()
+            stuckStart = now -- reset after click
+        end
+    else
+        stuckStart = nil
+    end
+
+    lastPos = pos
+end
+
+-- ========== PATHFIND ==========
+local function pathTo(targetPos)
+    local r = root(LP)
+    if not r then return nil, nil end
     local path = PathfindingService:CreatePath({
         AgentRadius = 2,
         AgentHeight = 5,
         AgentCanJump = true,
         AgentCanClimb = false,
-        WaypointSpacing = 3,
-        Costs = { Water = 20, Neon = 10 }
+        WaypointSpacing = 3
     })
-
-    local ok = pcall(function() path:ComputeAsync(root.Position, targetPos) end)
+    local ok = pcall(function()
+        path:ComputeAsync(r.Position, targetPos)
+    end)
     if not ok or path.Status ~= Enum.PathStatus.Success then
         return nil, path
     end
     return path:GetWaypoints(), path
 end
 
-local function moveToPoint(point)
-    local hum = getHumanoid(LP)
-    if hum then hum:MoveTo(point) end
-end
+local function walkWaypoints(waypoints, path, target)
+    local range = atkRange()
 
-local function stopMoving()
-    local hum = getHumanoid(LP)
-    local root = getRoot(LP)
-    if hum and root then hum:MoveTo(root.Position) end
-end
+    local blocked = false
+    local conn = path.Blocked:Connect(function()
+        blocked = true
+    end)
 
--- ========== DIRECT FOLLOW (< 20 studs) ==========
--- No pathfinding, just move straight with velocity prediction
+    for i = 2, #waypoints do
+        if not running then break end
+        if not alive(LP) then break end
+        if not alive(target) then break end
+        if blocked then break end
 
-local function directFollow(target)
-    local predicted = predictPosition(target)
-    if not predicted then return end
-    moveToPoint(predicted)
-end
+        local d = dist(target)
+        if d <= range then break end
+        if d <= DIRECT_RANGE then break end
 
-local function faceTarget(target)
-    local root = getRoot(LP)
-    local tRoot = getRoot(target)
-    if not root or not tRoot then return end
-    local dir = (tRoot.Position - root.Position).Unit
-    root.CFrame = CFrame.lookAt(root.Position, root.Position + Vector3.new(dir.X, 0, dir.Z))
-end
-
--- ========== MAIN LOOP ==========
-
-local function mainLoop()
-    local lastJumpTime = 0
-    local lastMovePos = getRoot(LP) and getRoot(LP).Position or Vector3.zero
-    local lastMoveCheck = tick()
-    local stuckAccum = 0
-
-    while running do
-        if not isAlive(LP) then
-            task.wait(0.5)
-            lastMovePos = getRoot(LP) and getRoot(LP).Position or Vector3.zero
-            stuckAccum = 0
-            continue
+        -- better target check
+        local nt = findTarget()
+        if nt and nt ~= target and score(nt) < score(target) - 10 then
+            break
         end
 
-        local target, dist = findNearestEnemy()
+        local wp = waypoints[i]
 
-        if not target then
-            stopMoving()
-            stuckAccum = 0
-            task.wait(0.1)
-            continue
+        -- pathfinder says jump
+        if wp.Action == Enum.PathWaypointAction.Jump then
+            jump()
         end
 
-        local attackRange = getAttackRange()
-        local now = tick()
-
-        -- ====== STUCK DETECTION ======
-        local root = getRoot(LP)
-        if root then
-            local dt = now - lastMoveCheck
-            local moved = (root.Position - lastMovePos).Magnitude
-            if moved < STUCK_MOVE_THRESHOLD then
-                stuckAccum = stuckAccum + dt
-            else
-                stuckAccum = 0
-            end
-            lastMovePos = root.Position
-            lastMoveCheck = now
-
-            -- not moving for 3 seconds: click
-            if stuckAccum >= STUCK_CLICK_TIME then
-                click()
-                stuckAccum = 0
-            end
+        -- obstacle check
+        if handleObstacle() then
+            break -- repath after obstacle handling
         end
 
-        -- ====== ATTACK ======
-        if dist <= attackRange then
-            faceTarget(target)
-            click()
+        moveTo(wp.Position)
 
-            -- humans keep attacking same monster until dead
-            if getTeam(LP) == "Humans" and isAlive(target) and distanceTo(target) <= attackRange then
-                task.wait(REPATH_INTERVAL)
-                continue
-            end
-
-            task.wait(REPATH_INTERVAL)
-            continue
-        end
-
-        -- ====== DIRECT FOLLOW (within 20 studs) ======
-        if dist <= DIRECT_FOLLOW_RANGE then
-            directFollow(target)
-
-            -- jump every 1 second
-            if now - lastJumpTime >= JUMP_INTERVAL then
-                doJump()
-                lastJumpTime = now
-            end
-
-            task.wait(REPATH_INTERVAL)
-            continue
-        end
-
-        -- ====== PATHFIND (> 20 studs) ======
-        local tRoot = getRoot(target)
-        if not tRoot then
-            task.wait(0.1)
-            continue
-        end
-
-        local predicted = predictPosition(target) or tRoot.Position
-        local waypoints, path = computePath(predicted)
-
-        if not waypoints then
-            -- fallback: direct move
-            moveToPoint(predicted)
-            if getObstacleHeight() >= 2 and getObstacleHeight() <= MAX_JUMP_STUDS then
-                doJump()
-            end
-            task.wait(0.1)
-            continue
-        end
-
-        local blocked = false
-        local blockedConn = path.Blocked:Connect(function()
-            blocked = true
-        end)
-
-        for i = 2, #waypoints do
-            if not running then break end
-            if not isAlive(LP) then break end
-            if not isAlive(target) then break end
+        -- walk to waypoint
+        local t = 0
+        while running and t < 1.5 do
+            local r = root(LP)
+            if not r then break end
+            if (r.Position - wp.Position).Magnitude < 3 then break end
+            if dist(target) <= range then break end
+            if dist(target) <= DIRECT_RANGE then break end
             if blocked then break end
 
-            local d = distanceTo(target)
-            if d <= attackRange then break end
+            tryJump()
+            updateStuck()
 
-            -- switch to direct follow when close enough
-            if d <= DIRECT_FOLLOW_RANGE then break end
+            task.wait(0.01)
+            t = t + 0.01
+        end
+    end
 
-            -- closer enemy appeared
-            local nt = findNearestEnemy()
-            if nt and nt ~= target then
-                local ns = targetScore(nt)
-                local cs = targetScore(target)
-                if ns < cs - 10 then break end
-            end
+    pcall(function() conn:Disconnect() end)
+end
 
-            local wp = waypoints[i]
+-- ========== MAIN ==========
+local function loop()
+    lastJump = tick()
+    stuckStart = nil
+    lastPos = root(LP) and root(LP).Position
 
-            if wp.Action == Enum.PathWaypointAction.Jump then
-                doJump()
-            end
-
-            local obsH = getObstacleHeight()
-            if obsH >= 2 and obsH <= MAX_JUMP_STUDS then
-                doJump()
-            elseif obsH > MAX_JUMP_STUDS then
-                trySidestep()
-                break
-            end
-
-            if hasGapAhead() then
-                trySidestep()
-                break
-            end
-
-            moveToPoint(wp.Position)
-
-            -- jump every 1s while pathfinding too
-            local elapsed = 0
-            while running and elapsed < 1.2 do
-                local r = getRoot(LP)
-                if not r then break end
-                if (r.Position - wp.Position).Magnitude < 3 then break end
-                if distanceTo(target) <= attackRange then break end
-                if distanceTo(target) <= DIRECT_FOLLOW_RANGE then break end
-                if blocked then break end
-
-                local n = tick()
-                if n - lastJumpTime >= JUMP_INTERVAL then
-                    doJump()
-                    lastJumpTime = n
-                end
-
-                -- stuck while walking waypoint
-                local movedWp = (r.Position - lastMovePos).Magnitude
-                if elapsed > 0.5 and movedWp < STUCK_MOVE_THRESHOLD then
-                    if getObstacleHeight() >= 2 then
-                        doJump()
-                    else
-                        trySidestep()
-                    end
-                    break
-                end
-
-                task.wait(REPATH_INTERVAL)
-                elapsed = elapsed + REPATH_INTERVAL
-                lastMovePos = r.Position
-                lastMoveCheck = tick()
-            end
+    while running do
+        if not alive(LP) then
+            stuckStart = nil
+            task.wait(0.5)
+            continue
         end
 
-        pcall(function() blockedConn:Disconnect() end)
-        task.wait(REPATH_INTERVAL)
+        local target = findTarget()
+        if not target then
+            stop()
+            stuckStart = nil
+            task.wait(0.1)
+            continue
+        end
+
+        local d = dist(target)
+        local range = atkRange()
+
+        updateStuck()
+
+        -- ====== ATTACK ======
+        if d <= range then
+            face(target)
+            press()
+            -- humans: keep hitting same monster
+            if team(LP) == "Humans" then
+                while running and alive(LP) and alive(target) and dist(target) <= range do
+                    face(target)
+                    press()
+                    tryJump()
+                    updateStuck()
+                    task.wait(0.01)
+                end
+            end
+            task.wait(0.01)
+            continue
+        end
+
+        -- ====== DIRECT FOLLOW (within 20) ======
+        if d <= DIRECT_RANGE then
+            local pos = predict(target)
+            if pos then
+                moveTo(pos)
+            end
+            tryJump()
+            handleObstacle()
+            task.wait(0.01)
+            continue
+        end
+
+        -- ====== PATHFIND (beyond 20) ======
+        local tpos = predict(target) or (root(target) and root(target).Position)
+        if not tpos then
+            task.wait(0.1)
+            continue
+        end
+
+        local waypoints, path = pathTo(tpos)
+
+        if waypoints then
+            walkWaypoints(waypoints, path, target)
+        else
+            -- fallback: direct move
+            moveTo(tpos)
+            handleObstacle()
+            task.wait(0.1)
+        end
+
+        task.wait(0.01)
     end
 end
 
--- ========== START / STOP ==========
-
-local function start()
+-- ========== CONTROL ==========
+local function startFarm()
     if running then return end
     running = true
-
-    local hum = getHumanoid(LP)
-    if hum then
-        hum.JumpHeight = JUMP_HEIGHT
-        hum.UseJumpPower = false
+    local h = hum(LP)
+    if h then
+        h.JumpHeight = JUMP_H
+        h.UseJumpPower = false
     end
-
-    task.spawn(mainLoop)
-    print("[AutoFarm] ON - Team: " .. tostring(getTeam(LP)))
+    task.spawn(loop)
+    print("[AutoFarm] ON - " .. tostring(team(LP)))
 end
 
-local function stop()
+local function stopFarm()
     running = false
-    stopMoving()
+    stop()
+    stuckStart = nil
+    lastPos = nil
     print("[AutoFarm] OFF")
 end
 
 getgenv().AutoFarmControl = {
-    Start = start,
-    Stop = stop,
+    Start = startFarm,
+    Stop = stopFarm,
     IsRunning = function() return running end
 }
 
 if getgenv().AutoFarmSettings and getgenv().AutoFarmSettings.Enabled then
-    start()
+    startFarm()
 end
 
-print("[AutoFarm] dsfeewtrew")
+print("[AutoFarm] trytry5rtyhythyty65tr")
 return getgenv().AutoFarmControl
