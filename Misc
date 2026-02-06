@@ -1,8 +1,6 @@
 -- Misc Module
 -- Loads tools from GitHub and provides Reset Rotation & Clear All Forces
 
-print("fahhh")
-
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
