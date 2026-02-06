@@ -631,6 +631,29 @@ function CombatModule.CreateUI(parent)
     -- AUTO DEFUSE
     yPos = createSectionTitle("AUTO DEFUSE", yPos)
 
+    -- Info label
+    local defuseInfoBg = Instance.new("Frame")
+    defuseInfoBg.Size = UDim2.new(0, 0, 0, 35)
+    defuseInfoBg.AutomaticSize = Enum.AutomaticSize.X
+    defuseInfoBg.Position = UDim2.new(0, 10, 0, yPos)
+    defuseInfoBg.BackgroundColor3 = TXT_BG
+    defuseInfoBg.BorderSizePixel = 0
+    defuseInfoBg.ZIndex = 66
+    defuseInfoBg.Parent = combatContent
+
+    local defuseInfo = Instance.new("TextLabel")
+    defuseInfo.Size = UDim2.new(0, 250, 1, 0)
+    defuseInfo.BackgroundTransparency = 1
+    defuseInfo.Text = "Detects Monsters team bomb animation\nthen auto-clicks to defuse"
+    defuseInfo.Font = Enum.Font.Gotham
+    defuseInfo.TextSize = 11
+    defuseInfo.TextColor3 = TEXT_COL
+    defuseInfo.TextXAlignment = Enum.TextXAlignment.Left
+    defuseInfo.TextWrapped = true
+    defuseInfo.ZIndex = 67
+    defuseInfo.Parent = defuseInfoBg
+    yPos = yPos + 40
+
     yPos = createToggleButton("Auto Defuse", getgenv().AutoDefuseSettings, "Enabled", yPos, function(enabled)
         if not autoDefuseLoaded then
             print("Loading Auto Defuse script from GitHub...")
@@ -650,7 +673,7 @@ function CombatModule.CreateUI(parent)
         if enabled then getgenv().AutoDefuseControl.Start() else getgenv().AutoDefuseControl.Stop() end
     end)
 
-    yPos = createSlider("Delay (ms)", getgenv().AutoDefuseSettings, "Delay", 0, 5000, yPos)
+    yPos = createSlider("React Delay (ms)", getgenv().AutoDefuseSettings, "Delay", 0, 5000, yPos)
     yPos = createSlider("Detection Radius", getgenv().AutoDefuseSettings, "DetectionRadius", 10, 100, yPos)
     yPos = createCheckbox("Show Circle", getgenv().AutoDefuseSettings, "ShowCircle", yPos)
 
