@@ -1,13 +1,11 @@
--- Player Module (Fixed)
--- Features: Reset Character, Lock Jumppower, Noclip, RemoveThisShit
--- FIX: RemoveThisShit Y offset now uses positive value after reset
+-- Player Module
+-- Features: Reset Character, Lock Jumppower, Noclip
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
-local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
 local PlayerModule = {}
@@ -17,21 +15,17 @@ getgenv().PlayerSettings = {
     ResetEnabled = false,
     LockJumppower = false,
     JumppowerValue = 50,
-    Noclip = false,
+    Noclip = false
 }
 
-local function isR15(character)
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return false end
-    return humanoid.RigType == Enum.HumanoidRigType.R15
-end
+-- Connections
+local jumppowerConnection = nil
+local noclipConnection = nil
 
-local function getRoot(character)
-    return character and (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso"))
-end
-
+-- Enable Reset Character
 local function enableReset()
     if getgenv().PlayerSettings.ResetEnabled then
+        -- Method 1: Fire fall damage remote
         local success = pcall(function()
             local args = {"Damage", math.huge}
             ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("FallDamage"):FireServer(unpack(args))
@@ -40,6 +34,7 @@ local function enableReset()
         if success then
             print("Reset character via fall damage")
         else
+            -- Method 2: Enable CoreGui reset button
             pcall(function()
                 StarterGui:SetCore("ResetButtonCallback", true)
                 print("Reset button enabled")
@@ -48,6 +43,7 @@ local function enableReset()
     end
 end
 
+-- Lock Jumppower
 local function lockJumppower()
     if jumppowerConnection then
         jumppowerConnection:Disconnect()
@@ -76,6 +72,7 @@ local function lockJumppower()
     end
 end
 
+-- Noclip
 local function toggleNoclip()
     if noclipConnection then
         noclipConnection:Disconnect()
@@ -124,45 +121,7 @@ function PlayerModule.CreateUI(parent)
     
     local yPos = 10
     
-    local function createCheckbox(name, settingsTable, settingKey, position, callback)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -20, 0, 35)
-        container.Position = UDim2.new(0, 10, 0, position)
-        container.BackgroundTransparency = 1
-        container.Parent = playerContent
-        
-        local checkbox = Instance.new("TextButton")
-        checkbox.Size = UDim2.new(0, 25, 0, 25)
-        checkbox.Position = UDim2.new(0, 0, 0, 5)
-        checkbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        checkbox.BorderSizePixel = 1
-        checkbox.BorderColor3 = Color3.fromRGB(255, 255, 255)
-        checkbox.Text = settingsTable[settingKey] and "X" or ""
-        checkbox.Font = Enum.Font.GothamBold
-        checkbox.TextSize = 18
-        checkbox.TextColor3 = Color3.fromRGB(0, 255, 0)
-        checkbox.Parent = container
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -35, 1, 0)
-        label.Position = UDim2.new(0, 35, 0, 0)
-        label.BackgroundTransparency = 1
-        label.Text = name
-        label.Font = Enum.Font.Gotham
-        label.TextSize = 12
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = container
-        
-        checkbox.MouseButton1Click:Connect(function()
-            settingsTable[settingKey] = not settingsTable[settingKey]
-            checkbox.Text = settingsTable[settingKey] and "X" or ""
-            if callback then callback(settingsTable[settingKey]) end
-        end)
-        
-        return position + 45
-    end
-    
+    -- Helper: toggle button
     local function createToggleButton(name, settingsTable, settingKey, position, callback)
         local button = Instance.new("TextButton")
         button.Size = UDim2.new(1, -20, 0, 35)
@@ -175,10 +134,6 @@ function PlayerModule.CreateUI(parent)
         button.TextColor3 = Color3.fromRGB(255, 255, 255)
         button.Parent = playerContent
         
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 6)
-        corner.Parent = button
-        
         button.MouseButton1Click:Connect(function()
             settingsTable[settingKey] = not settingsTable[settingKey]
             button.BackgroundColor3 = settingsTable[settingKey] and Color3.fromRGB(30, 144, 255) or Color3.fromRGB(60, 60, 60)
@@ -189,6 +144,7 @@ function PlayerModule.CreateUI(parent)
         return position + 45
     end
     
+    -- Helper: slider
     local function createSlider(name, settingsTable, settingKey, minVal, maxVal, position)
         local container = Instance.new("Frame")
         container.Size = UDim2.new(1, -20, 0, 50)
@@ -309,58 +265,15 @@ function PlayerModule.CreateUI(parent)
     
     yPos = createToggleButton("Noclip", getgenv().PlayerSettings, "Noclip", yPos, toggleNoclip)
     
-    yPos = yPos + 10
-    
-    -- RemoveThisShit Section
-    local invisTitle = Instance.new("TextLabel")
-    invisTitle.Size = UDim2.new(1, -20, 0, 30)
-    invisTitle.Position = UDim2.new(0, 10, 0, yPos)
-    invisTitle.BackgroundTransparency = 1
-    invisTitle.Text = "this shit not working after roff patched not play any animation that not confirmed ill find another way"
-    invisTitle.Font = Enum.Font.GothamBlack
-    invisTitle.TextSize = 16
-    invisTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    invisTitle.TextXAlignment = Enum.TextXAlignment.Left
-    invisTitle.Parent = playerContent
-    yPos = yPos + 40
-    
-    yPos = createToggleButton("RemoveThisShit", getgenv().PlayerSettings, "RemoveThisShit", yPos, toggleRemoveThisShit)
-    -- FIX: Y Offset slider now shows positive values (1-10)
-    yPos = createSlider("Y Offset", getgenv().PlayerSettings, "RemoveThisShitYOffset", 1, 10, yPos)
-    yPos = createCheckbox("Keep On Ground", getgenv().PlayerSettings, "KeepOnGround", yPos)
-    
-    local invisNote = Instance.new("TextLabel")
-    invisNote.Size = UDim2.new(1, -20, 0, 40)
-    invisNote.Position = UDim2.new(0, 10, 0, yPos)
-    invisNote.BackgroundTransparency = 1
-    invisNote.Text = "Controls: WASD = Move | E = Up | Q = Down"
-    invisNote.Font = Enum.Font.Gotham
-    invisNote.TextSize = 10
-    invisNote.TextColor3 = Color3.fromRGB(200, 200, 200)
-    invisNote.TextXAlignment = Enum.TextXAlignment.Left
-    invisNote.TextWrapped = true
-    invisNote.Parent = playerContent
-    yPos = yPos + 45
-    
     playerContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
 
 function PlayerModule.Cleanup()
-    if jumppowerConnection then jumppowerConnection:Disconnect() end
-    if noclipConnection then noclipConnection:Disconnect() end
-    if carpetLoop then carpetLoop:Disconnect() end
-    if carpet then carpet:Stop() end
-    if carpetAnim then carpetAnim:Destroy() end
-    if carpetDied then carpetDied:Disconnect() end
-    
-    -- Re-enable ground collision
-    local map = Workspace:FindFirstChild("Map")
-    if map then
-        for _, part in pairs(map:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = true
-            end
-        end
+    if jumppowerConnection then
+        jumppowerConnection:Disconnect()
+    end
+    if noclipConnection then
+        noclipConnection:Disconnect()
     end
 end
 
