@@ -2,10 +2,20 @@
 -- Loads tools from GitHub and provides Reset Rotation & Clear All Forces
 
 local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local MiscModule = {}
 
--- GitHub URLs for tools
+local TEXT_COL = Color3.fromRGB(0, 0, 0)
+local BTN_OFF = Color3.fromRGB(255, 255, 255)
+local BTN_ON = Color3.fromRGB(240, 220, 230)
+local SLIDER_BG = Color3.fromRGB(255, 255, 255)
+local SLIDER_FILL = Color3.fromRGB(0, 0, 0)
+local CHECK_OFF = Color3.fromRGB(180, 180, 180)
+local CHECK_ON = Color3.fromRGB(255, 255, 255)
+local TXT_BG = Color3.fromRGB(255, 255, 255)
+
 local ToolURLs = {
     MoveTool = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/MoveTool",
     RotateTool = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/RotateTool",
@@ -13,19 +23,11 @@ local ToolURLs = {
     RPMTool = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/RPMTool"
 }
 
--- Loaded tools storage
 local LoadedTools = {}
 
--- Function to load tool from GitHub
 local function loadTool(toolName, url)
-    if LoadedTools[toolName] then
-        return LoadedTools[toolName]
-    end
-    
-    local success, result = pcall(function()
-        return game:HttpGet(url)
-    end)
-    
+    if LoadedTools[toolName] then return LoadedTools[toolName] end
+    local success, result = pcall(function() return game:HttpGet(url) end)
     if success then
         local toolFunc, err = loadstring(result)
         if toolFunc then
@@ -48,172 +50,200 @@ function MiscModule.CreateUI(parent)
     miscContent.BackgroundTransparency = 1
     miscContent.BorderSizePixel = 0
     miscContent.ScrollBarThickness = 4
+    miscContent.ScrollBarImageColor3 = Color3.fromRGB(200, 180, 190)
     miscContent.Parent = parent
-    
+
     local yPos = 10
-    
-    local function createButton(name, position, color, callback)
+
+    -- Section title with white background
+    local function createSectionTitle(text, position)
+        local bg = Instance.new("Frame")
+        bg.Size = UDim2.new(1, -20, 0, 28)
+        bg.Position = UDim2.new(0, 10, 0, position)
+        bg.BackgroundColor3 = TXT_BG
+        bg.BorderSizePixel = 0
+        bg.ZIndex = 66
+        bg.Parent = miscContent
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -8, 1, 0)
+        label.Position = UDim2.new(0, 4, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 15
+        label.TextColor3 = TEXT_COL
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.ZIndex = 67
+        label.Parent = bg
+        return position + 38
+    end
+
+    local function createButton(name, position, callback)
         local button = Instance.new("TextButton")
         button.Size = UDim2.new(1, -20, 0, 35)
         button.Position = UDim2.new(0, 10, 0, position)
-        button.BackgroundColor3 = color or Color3.fromRGB(60, 60, 60)
+        button.BackgroundColor3 = BTN_OFF
         button.BorderSizePixel = 0
+        button.AutoButtonColor = false
         button.Text = name
-        button.Font = Enum.Font.GothamBold
+        button.Font = Enum.Font.Gotham
         button.TextSize = 14
-        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.TextColor3 = TEXT_COL
+        button.ZIndex = 68
         button.Parent = miscContent
-        
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 6)
+        corner.Parent = button
+
+        button.MouseEnter:Connect(function() button.BackgroundColor3 = BTN_ON end)
+        button.MouseLeave:Connect(function()
+            -- Only revert if not in "enabled" state
+            if not button:GetAttribute("Active") then
+                button.BackgroundColor3 = BTN_OFF
+            end
+        end)
+
         button.MouseButton1Click:Connect(function()
             callback(button)
         end)
         return button, position + 45
     end
-    
+
     local function createSlider(name, position, minVal, maxVal, currentValue, callback)
         local container = Instance.new("Frame")
         container.Size = UDim2.new(1, -20, 0, 50)
         container.Position = UDim2.new(0, 10, 0, position)
         container.BackgroundTransparency = 1
+        container.ZIndex = 65
         container.Parent = miscContent
-        
+
+        local labelBg = Instance.new("Frame")
+        labelBg.Size = UDim2.new(0, 120, 0, 20)
+        labelBg.Position = UDim2.new(0, 0, 0, 5)
+        labelBg.BackgroundColor3 = TXT_BG
+        labelBg.BorderSizePixel = 0
+        labelBg.ZIndex = 66
+        labelBg.Parent = container
+
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0, 120, 0, 20)
-        label.Position = UDim2.new(0, 0, 0, 5)
+        label.Size = UDim2.new(1, -4, 1, 0)
+        label.Position = UDim2.new(0, 2, 0, 0)
         label.BackgroundTransparency = 1
         label.Text = name .. ": " .. currentValue
-        label.Font = Enum.Font.GothamBold
+        label.Font = Enum.Font.Gotham
         label.TextSize = 12
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextColor3 = TEXT_COL
         label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = container
-        
+        label.ZIndex = 67
+        label.Parent = labelBg
+
         local sliderBg = Instance.new("Frame")
         sliderBg.Size = UDim2.new(1, -130, 0, 20)
         sliderBg.Position = UDim2.new(0, 125, 0, 25)
-        sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        sliderBg.BorderSizePixel = 1
-        sliderBg.BorderColor3 = Color3.fromRGB(255, 255, 255)
+        sliderBg.BackgroundColor3 = SLIDER_BG
+        sliderBg.BorderSizePixel = 0
+        sliderBg.ZIndex = 68
         sliderBg.Parent = container
-        
+
+        local sc = Instance.new("UICorner")
+        sc.CornerRadius = UDim.new(0, 4)
+        sc.Parent = sliderBg
+
         local sliderFill = Instance.new("Frame")
         sliderFill.Size = UDim2.new((currentValue - minVal) / (maxVal - minVal), 0, 1, 0)
-        sliderFill.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
+        sliderFill.BackgroundColor3 = SLIDER_FILL
         sliderFill.BorderSizePixel = 0
+        sliderFill.ZIndex = 69
         sliderFill.Parent = sliderBg
-        
+
+        local fc = Instance.new("UICorner")
+        fc.CornerRadius = UDim.new(0, 4)
+        fc.Parent = sliderFill
+
         local sliderButton = Instance.new("TextButton")
         sliderButton.Size = UDim2.new(1, 0, 1, 0)
         sliderButton.BackgroundTransparency = 1
         sliderButton.Text = ""
+        sliderButton.ZIndex = 70
         sliderButton.Parent = sliderBg
-        
+
         local dragging = false
-        
-        sliderButton.MouseButton1Down:Connect(function()
-            dragging = true
+        sliderButton.MouseButton1Down:Connect(function() dragging = true end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
         end)
-        
-        game:GetService("UserInputService").InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = false
-            end
-        end)
-        
-        game:GetService("RunService").RenderStepped:Connect(function()
+        RunService.RenderStepped:Connect(function()
             if dragging then
-                local mousePos = game:GetService("UserInputService"):GetMouseLocation()
+                local mousePos = UserInputService:GetMouseLocation()
                 local relativeX = math.clamp(mousePos.X - sliderBg.AbsolutePosition.X, 0, sliderBg.AbsoluteSize.X)
                 local percentage = relativeX / sliderBg.AbsoluteSize.X
                 local value = minVal + (maxVal - minVal) * percentage
-                
                 if maxVal - minVal <= 10 then
                     value = math.floor(value * 10) / 10
                 else
                     value = math.floor(value)
                 end
-                
                 sliderFill.Size = UDim2.new((value - minVal) / (maxVal - minVal), 0, 1, 0)
                 label.Text = name .. ": " .. value
-                
                 if callback then callback(value) end
             end
         end)
-        
         return position + 60
     end
-    
+
+    -- Helper to set button active state
+    local function setActive(btn, active)
+        btn:SetAttribute("Active", active)
+        btn.BackgroundColor3 = active and BTN_ON or BTN_OFF
+    end
+
     -- PART CONTROLLER Section
-    local controllerTitle = Instance.new("TextLabel")
-    controllerTitle.Size = UDim2.new(1, -20, 0, 30)
-    controllerTitle.Position = UDim2.new(0, 10, 0, yPos)
-    controllerTitle.BackgroundTransparency = 1
-    controllerTitle.Text = "PART CONTROLLER"
-    controllerTitle.Font = Enum.Font.GothamBlack
-    controllerTitle.TextSize = 16
-    controllerTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    controllerTitle.TextXAlignment = Enum.TextXAlignment.Left
-    controllerTitle.Parent = miscContent
-    yPos = yPos + 40
-    
-    -- Declare button variables
-    local moveToolBtn
-    local rotateToolBtn
-    local ringBtn
-    local spinBtn
-    local safeNosBtn
-    
-    -- Move Tool Button
-    moveToolBtn, yPos = createButton("Move Tool", yPos, Color3.fromRGB(100, 100, 100), function(button)
+    yPos = createSectionTitle("PART CONTROLLER", yPos)
+
+    local moveToolBtn, rotateToolBtn, ringBtn, spinBtn, safeNosBtn
+
+    moveToolBtn, yPos = createButton("Move Tool", yPos, function(button)
         local moveTool = loadTool("MoveTool", ToolURLs.MoveTool)
         if not moveTool then return end
-        
         if moveTool.IsEnabled() then
             moveTool.Disable()
-            button.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            setActive(button, false)
         else
-            -- Disable other tools
             if LoadedTools.RotateTool and LoadedTools.RotateTool.IsEnabled() then
                 LoadedTools.RotateTool.Disable()
-                if rotateToolBtn then rotateToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100) end
+                if rotateToolBtn then setActive(rotateToolBtn, false) end
             end
-            
             moveTool.Enable()
-            button.BackgroundColor3 = Color3.fromRGB(50, 180, 220)
+            setActive(button, true)
         end
     end)
-    
-    -- Rotate Tool Button
-    rotateToolBtn, yPos = createButton("Rotate Tool", yPos, Color3.fromRGB(100, 100, 100), function(button)
+
+    rotateToolBtn, yPos = createButton("Rotate Tool", yPos, function(button)
         local rotateTool = loadTool("RotateTool", ToolURLs.RotateTool)
         if not rotateTool then return end
-        
         if rotateTool.IsEnabled() then
             rotateTool.Disable()
-            button.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            setActive(button, false)
         else
-            -- Disable other tools
             if LoadedTools.MoveTool and LoadedTools.MoveTool.IsEnabled() then
                 LoadedTools.MoveTool.Disable()
-                if moveToolBtn then moveToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100) end
+                if moveToolBtn then setActive(moveToolBtn, false) end
             end
-            
             rotateTool.Enable()
-            button.BackgroundColor3 = Color3.fromRGB(220, 100, 50)
+            setActive(button, true)
         end
     end)
-    
-    -- Reset Rotation Button (Built-in)
-    local resetBtn, yPos2 = createButton("Reset Rotation", yPos, Color3.fromRGB(80, 80, 80), function()
-        -- Try to get selected parts from MoveTool or RotateTool
+
+    local resetBtn
+    resetBtn, yPos = createButton("Reset Rotation", yPos, function()
         local selectedConnectedParts = {}
-        
         if LoadedTools.MoveTool and LoadedTools.MoveTool.GetSelectedConnectedParts then
             selectedConnectedParts = LoadedTools.MoveTool.GetSelectedConnectedParts()
         elseif LoadedTools.RotateTool and LoadedTools.RotateTool.GetSelectedConnectedParts then
             selectedConnectedParts = LoadedTools.RotateTool.GetSelectedConnectedParts()
         end
-        
         if #selectedConnectedParts > 0 then
             for _, connectedPart in ipairs(selectedConnectedParts) do
                 if connectedPart and connectedPart.Parent then
@@ -228,257 +258,196 @@ function MiscModule.CreateUI(parent)
             warn("No part selected")
         end
     end)
-    yPos = yPos2
-    
-    -- Clear All Forces Button (Built-in)
-    local clearBtn, yPos2 = createButton("Clear All Forces", yPos, Color3.fromRGB(60, 60, 60), function()
+
+    local clearBtn
+    clearBtn, yPos = createButton("Clear All Forces", yPos, function()
         for _, part in ipairs(game.Workspace:GetDescendants()) do
             if part:IsA("BasePart") then
                 for _, child in ipairs(part:GetChildren()) do
-                    if child.Name == "MoveToolPosition" or child.Name == "MoveToolGyro" or 
-                       child.Name == "RingPosition" or child.Name == "RingGyro" or 
+                    if child.Name == "MoveToolPosition" or child.Name == "MoveToolGyro" or
+                       child.Name == "RingPosition" or child.Name == "RingGyro" or
                        child.Name == "SpinVelocity" then
                         child:Destroy()
                     end
                 end
             end
         end
-        
-        -- Disable all tools
         if LoadedTools.MoveTool then LoadedTools.MoveTool.Disable() end
         if LoadedTools.RotateTool then LoadedTools.RotateTool.Disable() end
         if LoadedTools.RingShape then LoadedTools.RingShape.Disable() end
         if LoadedTools.RPMTool then LoadedTools.RPMTool.Disable() end
-        
-        -- Reset button colors
-        moveToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        rotateToolBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        if ringBtn then ringBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100) end
-        if spinBtn then spinBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100) end
-        
+        setActive(moveToolBtn, false)
+        setActive(rotateToolBtn, false)
+        if ringBtn then setActive(ringBtn, false) end
+        if spinBtn then setActive(spinBtn, false) end
         print("All forces cleared")
     end)
-    yPos = yPos2 + 20
-    
+
+    yPos = yPos + 10
+
     -- RING FORMATION Section
-    local ringTitle = Instance.new("TextLabel")
-    ringTitle.Size = UDim2.new(1, -20, 0, 30)
-    ringTitle.Position = UDim2.new(0, 10, 0, yPos)
-    ringTitle.BackgroundTransparency = 1
-    ringTitle.Text = "RING FORMATION"
-    ringTitle.Font = Enum.Font.GothamBlack
-    ringTitle.TextSize = 16
-    ringTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ringTitle.TextXAlignment = Enum.TextXAlignment.Left
-    ringTitle.Parent = miscContent
-    yPos = yPos + 40
-    
-    ringBtn, yPos = createButton("Ring Shape", yPos, Color3.fromRGB(100, 100, 100), function(button)
+    yPos = createSectionTitle("RING FORMATION", yPos)
+
+    ringBtn, yPos = createButton("Ring Shape", yPos, function(button)
         local ringShape = loadTool("RingShape", ToolURLs.RingShape)
         if not ringShape then return end
-        
         if ringShape.IsEnabled() then
             ringShape.Disable()
-            button.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            setActive(button, false)
         else
             ringShape.Enable()
-            button.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
+            setActive(button, true)
         end
     end)
-    
+
     yPos = createSlider("Ring Radius", yPos, 5, 50, 10, function(value)
-        local ringShape = LoadedTools.RingShape
-        if ringShape then
-            ringShape.SetRadius(value)
-        end
+        if LoadedTools.RingShape then LoadedTools.RingShape.SetRadius(value) end
     end)
-    
+
     yPos = createSlider("Ring Height", yPos, -10, 20, 3, function(value)
-        local ringShape = LoadedTools.RingShape
-        if ringShape then
-            ringShape.SetHeight(value)
-        end
+        if LoadedTools.RingShape then LoadedTools.RingShape.SetHeight(value) end
     end)
-    
+
     yPos = createSlider("Ring Rotation", yPos, 0, 360, 0, function(value)
-        local ringShape = LoadedTools.RingShape
-        if ringShape then
-            ringShape.SetRotation(value)
-        end
+        if LoadedTools.RingShape then LoadedTools.RingShape.SetRotation(value) end
     end)
-    
-    yPos = yPos + 20
-    
+
+    yPos = yPos + 10
+
     -- SPIN PARTS Section
-    local spinTitle = Instance.new("TextLabel")
-    spinTitle.Size = UDim2.new(1, -20, 0, 30)
-    spinTitle.Position = UDim2.new(0, 10, 0, yPos)
-    spinTitle.BackgroundTransparency = 1
-    spinTitle.Text = "SPIN PARTS"
-    spinTitle.Font = Enum.Font.GothamBlack
-    spinTitle.TextSize = 16
-    spinTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    spinTitle.TextXAlignment = Enum.TextXAlignment.Left
-    spinTitle.Parent = miscContent
-    yPos = yPos + 40
-    
-    spinBtn, yPos = createButton("Spin Parts", yPos, Color3.fromRGB(100, 100, 100), function(button)
+    yPos = createSectionTitle("SPIN PARTS", yPos)
+
+    spinBtn, yPos = createButton("Spin Parts", yPos, function(button)
         local rpmTool = loadTool("RPMTool", ToolURLs.RPMTool)
         if not rpmTool then return end
-        
         if rpmTool.IsEnabled() then
             rpmTool.Disable()
-            button.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            setActive(button, false)
         else
-            -- Set function to get selected parts from active tool
             rpmTool.SetGetSelectedPartsFunction(function()
-                -- Try to get from MoveTool first
                 if LoadedTools.MoveTool and LoadedTools.MoveTool.GetSelectedConnectedParts then
                     local parts = LoadedTools.MoveTool.GetSelectedConnectedParts()
                     if #parts > 0 then return parts end
                 end
-                
-                -- Try to get from RotateTool
                 if LoadedTools.RotateTool and LoadedTools.RotateTool.GetSelectedConnectedParts then
                     local parts = LoadedTools.RotateTool.GetSelectedConnectedParts()
                     if #parts > 0 then return parts end
                 end
-                
                 return {}
             end)
-            
             local success = rpmTool.Enable()
-            if success then
-                button.BackgroundColor3 = Color3.fromRGB(255, 100, 200)
-            else
-                button.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-            end
+            setActive(button, success)
         end
     end)
-    
+
     yPos = createSlider("Spin RPM", yPos, 1, 3000, 10, function(value)
-        local rpmTool = LoadedTools.RPMTool
-        if rpmTool then
-            rpmTool.SetRPM(value)
-        end
+        if LoadedTools.RPMTool then LoadedTools.RPMTool.SetRPM(value) end
     end)
-    
+
     -- Spin Axis Selector
+    local axisLabelBg = Instance.new("Frame")
+    axisLabelBg.Size = UDim2.new(1, -20, 0, 25)
+    axisLabelBg.Position = UDim2.new(0, 10, 0, yPos)
+    axisLabelBg.BackgroundColor3 = TXT_BG
+    axisLabelBg.BorderSizePixel = 0
+    axisLabelBg.ZIndex = 66
+    axisLabelBg.Parent = miscContent
+
     local axisLabel = Instance.new("TextLabel")
-    axisLabel.Size = UDim2.new(1, -20, 0, 25)
-    axisLabel.Position = UDim2.new(0, 10, 0, yPos)
+    axisLabel.Size = UDim2.new(1, -8, 1, 0)
+    axisLabel.Position = UDim2.new(0, 4, 0, 0)
     axisLabel.BackgroundTransparency = 1
     axisLabel.Text = "Spin Axis:"
-    axisLabel.Font = Enum.Font.GothamBold
+    axisLabel.Font = Enum.Font.Gotham
     axisLabel.TextSize = 12
-    axisLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    axisLabel.TextColor3 = TEXT_COL
     axisLabel.TextXAlignment = Enum.TextXAlignment.Left
-    axisLabel.Parent = miscContent
+    axisLabel.ZIndex = 67
+    axisLabel.Parent = axisLabelBg
     yPos = yPos + 30
-    
-    -- Vertical Button
+
     local verticalBtn = Instance.new("TextButton")
     verticalBtn.Size = UDim2.new(0, 135, 0, 30)
     verticalBtn.Position = UDim2.new(0, 10, 0, yPos)
-    verticalBtn.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
+    verticalBtn.BackgroundColor3 = BTN_ON
     verticalBtn.BorderSizePixel = 0
     verticalBtn.Text = "Vertical"
-    verticalBtn.Font = Enum.Font.GothamBold
+    verticalBtn.Font = Enum.Font.Gotham
     verticalBtn.TextSize = 12
-    verticalBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    verticalBtn.TextColor3 = TEXT_COL
+    verticalBtn.AutoButtonColor = false
+    verticalBtn.ZIndex = 68
     verticalBtn.Parent = miscContent
-    
-    -- Horizontal Button
+
+    local vc = Instance.new("UICorner")
+    vc.CornerRadius = UDim.new(0, 6)
+    vc.Parent = verticalBtn
+
     local horizontalBtn = Instance.new("TextButton")
     horizontalBtn.Size = UDim2.new(0, 135, 0, 30)
     horizontalBtn.Position = UDim2.new(0, 155, 0, yPos)
-    horizontalBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    horizontalBtn.BackgroundColor3 = BTN_OFF
     horizontalBtn.BorderSizePixel = 0
     horizontalBtn.Text = "Horizontal"
-    horizontalBtn.Font = Enum.Font.GothamBold
+    horizontalBtn.Font = Enum.Font.Gotham
     horizontalBtn.TextSize = 12
-    horizontalBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    horizontalBtn.TextColor3 = TEXT_COL
+    horizontalBtn.AutoButtonColor = false
+    horizontalBtn.ZIndex = 68
     horizontalBtn.Parent = miscContent
-    
+
+    local hc = Instance.new("UICorner")
+    hc.CornerRadius = UDim.new(0, 6)
+    hc.Parent = horizontalBtn
+
     verticalBtn.MouseButton1Click:Connect(function()
-        local rpmTool = LoadedTools.RPMTool
-        if rpmTool then
-            rpmTool.SetAxis("Vertical")
-            verticalBtn.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
-            horizontalBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        end
+        if LoadedTools.RPMTool then LoadedTools.RPMTool.SetAxis("Vertical") end
+        verticalBtn.BackgroundColor3 = BTN_ON
+        horizontalBtn.BackgroundColor3 = BTN_OFF
     end)
-    
+
     horizontalBtn.MouseButton1Click:Connect(function()
-        local rpmTool = LoadedTools.RPMTool
-        if rpmTool then
-            rpmTool.SetAxis("Horizontal")
-            horizontalBtn.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
-            verticalBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        end
+        if LoadedTools.RPMTool then LoadedTools.RPMTool.SetAxis("Horizontal") end
+        horizontalBtn.BackgroundColor3 = BTN_ON
+        verticalBtn.BackgroundColor3 = BTN_OFF
     end)
-    
+
     yPos = yPos + 45
-    
+
     -- SAFE-NOS Section
-    local safeNosTitle = Instance.new("TextLabel")
-    safeNosTitle.Size = UDim2.new(1, -20, 0, 30)
-    safeNosTitle.Position = UDim2.new(0, 10, 0, yPos)
-    safeNosTitle.BackgroundTransparency = 1
-    safeNosTitle.Text = "SAFE-NOS"
-    safeNosTitle.Font = Enum.Font.GothamBlack
-    safeNosTitle.TextSize = 16
-    safeNosTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    safeNosTitle.TextXAlignment = Enum.TextXAlignment.Left
-    safeNosTitle.Parent = miscContent
-    yPos = yPos + 40
-    
-    safeNosBtn, yPos = createButton("Safe-NOS", yPos, Color3.fromRGB(100, 100, 100), function(button)
+    yPos = createSectionTitle("SAFE-NOS", yPos)
+
+    safeNosBtn, yPos = createButton("Safe-NOS", yPos, function(button)
         if getgenv().SafeNOSEnabled then
             getgenv().SafeNOSEnabled = false
-            button.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            setActive(button, false)
             button.Text = "Safe-NOS"
-            
             if getgenv().SafeNOSConnection then
                 getgenv().SafeNOSConnection:Disconnect()
                 getgenv().SafeNOSConnection = nil
             end
         else
             getgenv().SafeNOSEnabled = true
-            button.BackgroundColor3 = Color3.fromRGB(50, 255, 50)
+            setActive(button, true)
             button.Text = "Safe-NOS (ON)"
-            
-            -- Start monitoring network ownership
             local Players = game:GetService("Players")
             local LocalPlayer = Players.LocalPlayer
-            local RunService = game:GetService("RunService")
-            
             getgenv().SafeNOSConnection = RunService.Heartbeat:Connect(function()
                 if not getgenv().SafeNOSEnabled then return end
-                
                 for _, part in ipairs(workspace:GetDescendants()) do
                     if part:IsA("BasePart") then
-                        -- Check for any forces
-                        local hasForce = false
                         for _, child in ipairs(part:GetChildren()) do
-                            if child.Name == "MoveToolPosition" or 
-                               child.Name == "MoveToolGyro" or 
-                               child.Name == "RingPosition" or 
-                               child.Name == "RingGyro" or 
+                            if child.Name == "MoveToolPosition" or child.Name == "MoveToolGyro" or
+                               child.Name == "RingPosition" or child.Name == "RingGyro" or
                                child.Name == "SpinVelocity" then
-                                hasForce = true
-                                
-                                -- Check network ownership
                                 local hasOwnership = part:CanSetNetworkOwnership()
                                 if hasOwnership then
                                     local owner = part:GetNetworkOwner()
-                                    -- If we don't own it (owner is not LocalPlayer), clear forces
                                     if owner ~= LocalPlayer then
                                         child:Destroy()
                                         print("Safe-NOS: Cleared force from " .. part.Name .. " (lost ownership)")
                                     end
                                 end
-                                
                                 break
                             end
                         end
@@ -487,161 +456,169 @@ function MiscModule.CreateUI(parent)
             end)
         end
     end)
-    
+
+    local safeInfoBg = Instance.new("Frame")
+    safeInfoBg.Size = UDim2.new(1, -20, 0, 40)
+    safeInfoBg.Position = UDim2.new(0, 10, 0, yPos)
+    safeInfoBg.BackgroundColor3 = TXT_BG
+    safeInfoBg.BorderSizePixel = 0
+    safeInfoBg.ZIndex = 66
+    safeInfoBg.Parent = miscContent
+
     local safeNosInfo = Instance.new("TextLabel")
-    safeNosInfo.Size = UDim2.new(1, -20, 0, 40)
-    safeNosInfo.Position = UDim2.new(0, 10, 0, yPos)
+    safeNosInfo.Size = UDim2.new(1, -8, 1, 0)
+    safeNosInfo.Position = UDim2.new(0, 4, 0, 0)
     safeNosInfo.BackgroundTransparency = 1
     safeNosInfo.Text = "Automatically removes forces when\nyou lose network ownership"
     safeNosInfo.Font = Enum.Font.Gotham
     safeNosInfo.TextSize = 11
-    safeNosInfo.TextColor3 = Color3.fromRGB(200, 200, 200)
+    safeNosInfo.TextColor3 = TEXT_COL
     safeNosInfo.TextXAlignment = Enum.TextXAlignment.Left
     safeNosInfo.TextYAlignment = Enum.TextYAlignment.Top
     safeNosInfo.TextWrapped = true
-    safeNosInfo.Parent = miscContent
+    safeNosInfo.ZIndex = 67
+    safeNosInfo.Parent = safeInfoBg
     yPos = yPos + 50
-    
+
     -- DISABLE AAS Section
-    local disableAASTitle = Instance.new("TextLabel")
-    disableAASTitle.Size = UDim2.new(1, -20, 0, 30)
-    disableAASTitle.Position = UDim2.new(0, 10, 0, yPos)
-    disableAASTitle.BackgroundTransparency = 1
-    disableAASTitle.Text = "DISABLE AAS"
-    disableAASTitle.Font = Enum.Font.GothamBlack
-    disableAASTitle.TextSize = 16
-    disableAASTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    disableAASTitle.TextXAlignment = Enum.TextXAlignment.Left
-    disableAASTitle.Parent = miscContent
-    yPos = yPos + 40
-    
+    yPos = createSectionTitle("DISABLE AAS", yPos)
+
     local disableAASBtn
-    disableAASBtn, yPos = createButton("Disable AAS", yPos, Color3.fromRGB(100, 100, 100), function(button)
+    disableAASBtn, yPos = createButton("Disable AAS", yPos, function(button)
         if getgenv().DisableAASEnabled then
             getgenv().DisableAASEnabled = false
-            button.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            setActive(button, false)
             button.Text = "Disable AAS"
-            
             if getgenv().DisableAASConnection then
-                getgenv().DisableAASConnection:Disconnect()
+                pcall(function() task.cancel(getgenv().DisableAASConnection) end)
                 getgenv().DisableAASConnection = nil
             end
         else
             getgenv().DisableAASEnabled = true
-            button.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+            setActive(button, true)
             button.Text = "Disable AAS (ON)"
-            
             local Players = game:GetService("Players")
             local LocalPlayer = Players.LocalPlayer
-            
             getgenv().DisableAASConnection = task.spawn(function()
                 while getgenv().DisableAASEnabled do
                     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                         local hrp = LocalPlayer.Character.HumanoidRootPart
-                        
-                        -- Set Y offset to 3
                         hrp.CFrame = hrp.CFrame + Vector3.new(0, 3, 0)
-                        
-                        -- Flip player if enabled
                         if getgenv().FlipPlayerEnabled then
                             hrp.CFrame = hrp.CFrame * CFrame.Angles(math.pi, 0, 0)
                         end
                     end
-                    
                     task.wait(0.5)
                 end
             end)
         end
     end)
-    
+
     -- Flip Player Checkbox
     local flipContainer = Instance.new("Frame")
     flipContainer.Size = UDim2.new(1, -20, 0, 30)
     flipContainer.Position = UDim2.new(0, 10, 0, yPos)
     flipContainer.BackgroundTransparency = 1
+    flipContainer.ZIndex = 65
     flipContainer.Parent = miscContent
-    
+
     local flipCheckbox = Instance.new("TextButton")
     flipCheckbox.Size = UDim2.new(0, 25, 0, 25)
     flipCheckbox.Position = UDim2.new(0, 0, 0, 0)
-    flipCheckbox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    flipCheckbox.BorderSizePixel = 1
-    flipCheckbox.BorderColor3 = Color3.fromRGB(255, 255, 255)
+    flipCheckbox.BackgroundColor3 = CHECK_OFF
+    flipCheckbox.BorderSizePixel = 0
     flipCheckbox.Text = ""
+    flipCheckbox.AutoButtonColor = false
+    flipCheckbox.ZIndex = 68
     flipCheckbox.Parent = flipContainer
-    
+
+    local fcc = Instance.new("UICorner")
+    fcc.CornerRadius = UDim.new(0, 4)
+    fcc.Parent = flipCheckbox
+
     local checkmark = Instance.new("TextLabel")
     checkmark.Size = UDim2.new(1, 0, 1, 0)
     checkmark.BackgroundTransparency = 1
     checkmark.Text = ""
     checkmark.Font = Enum.Font.GothamBold
     checkmark.TextSize = 18
-    checkmark.TextColor3 = Color3.fromRGB(0, 255, 0)
+    checkmark.TextColor3 = TEXT_COL
+    checkmark.ZIndex = 69
     checkmark.Parent = flipCheckbox
-    
+
+    local flipLabelBg = Instance.new("Frame")
+    flipLabelBg.Size = UDim2.new(1, -35, 1, 0)
+    flipLabelBg.Position = UDim2.new(0, 35, 0, 0)
+    flipLabelBg.BackgroundColor3 = TXT_BG
+    flipLabelBg.BorderSizePixel = 0
+    flipLabelBg.ZIndex = 66
+    flipLabelBg.Parent = flipContainer
+
     local flipLabel = Instance.new("TextLabel")
-    flipLabel.Size = UDim2.new(1, -35, 1, 0)
-    flipLabel.Position = UDim2.new(0, 35, 0, 0)
+    flipLabel.Size = UDim2.new(1, -8, 1, 0)
+    flipLabel.Position = UDim2.new(0, 4, 0, 0)
     flipLabel.BackgroundTransparency = 1
     flipLabel.Text = "Flip Player"
-    flipLabel.Font = Enum.Font.GothamBold
+    flipLabel.Font = Enum.Font.Gotham
     flipLabel.TextSize = 12
-    flipLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    flipLabel.TextColor3 = TEXT_COL
     flipLabel.TextXAlignment = Enum.TextXAlignment.Left
-    flipLabel.Parent = flipContainer
-    
+    flipLabel.ZIndex = 67
+    flipLabel.Parent = flipLabelBg
+
     getgenv().FlipPlayerEnabled = false
-    
+
     flipCheckbox.MouseButton1Click:Connect(function()
         getgenv().FlipPlayerEnabled = not getgenv().FlipPlayerEnabled
-        
         if getgenv().FlipPlayerEnabled then
+            flipCheckbox.BackgroundColor3 = CHECK_ON
             checkmark.Text = "✓"
-            flipCheckbox.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
         else
+            flipCheckbox.BackgroundColor3 = CHECK_OFF
             checkmark.Text = ""
-            flipCheckbox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
         end
     end)
-    
+
     yPos = yPos + 40
-    
+
+    local aasInfoBg = Instance.new("Frame")
+    aasInfoBg.Size = UDim2.new(1, -20, 0, 40)
+    aasInfoBg.Position = UDim2.new(0, 10, 0, yPos)
+    aasInfoBg.BackgroundColor3 = TXT_BG
+    aasInfoBg.BorderSizePixel = 0
+    aasInfoBg.ZIndex = 66
+    aasInfoBg.Parent = miscContent
+
     local aasInfo = Instance.new("TextLabel")
-    aasInfo.Size = UDim2.new(1, -20, 0, 40)
-    aasInfo.Position = UDim2.new(0, 10, 0, yPos)
+    aasInfo.Size = UDim2.new(1, -8, 1, 0)
+    aasInfo.Position = UDim2.new(0, 4, 0, 0)
     aasInfo.BackgroundTransparency = 1
     aasInfo.Text = "Moves you up by 3 studs every 0.5s\nOptionally flips character upside down"
     aasInfo.Font = Enum.Font.Gotham
     aasInfo.TextSize = 11
-    aasInfo.TextColor3 = Color3.fromRGB(200, 200, 200)
+    aasInfo.TextColor3 = TEXT_COL
     aasInfo.TextXAlignment = Enum.TextXAlignment.Left
     aasInfo.TextYAlignment = Enum.TextYAlignment.Top
     aasInfo.TextWrapped = true
-    aasInfo.Parent = miscContent
+    aasInfo.ZIndex = 67
+    aasInfo.Parent = aasInfoBg
     yPos = yPos + 50
-    
+
     miscContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
 
 function MiscModule.Cleanup()
-    -- Cleanup all loaded tools
     if LoadedTools.MoveTool then LoadedTools.MoveTool.Disable() end
     if LoadedTools.RotateTool then LoadedTools.RotateTool.Disable() end
     if LoadedTools.RingShape then LoadedTools.RingShape.Disable() end
     if LoadedTools.RPMTool then LoadedTools.RPMTool.Disable() end
-    
-    -- Cleanup Safe-NOS
     if getgenv().SafeNOSConnection then
         getgenv().SafeNOSConnection:Disconnect()
         getgenv().SafeNOSConnection = nil
     end
     getgenv().SafeNOSEnabled = false
-    
-    -- Cleanup Disable AAS
     if getgenv().DisableAASConnection then
-        pcall(function()
-            task.cancel(getgenv().DisableAASConnection)
-        end)
+        pcall(function() task.cancel(getgenv().DisableAASConnection) end)
         getgenv().DisableAASConnection = nil
     end
     getgenv().DisableAASEnabled = false
