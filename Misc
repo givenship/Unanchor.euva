@@ -29,7 +29,8 @@ local ToolURLs = {
     MoveTool = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/MoveTool",
     RotateTool = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/RotateTool",
     RingShape = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/RingShape",
-    RPMTool = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/RPMTool"
+    RPMTool = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/RPMTool",
+    AutoFarm = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/AutoFarm"
 }
 
 local LoadedTools = {}
@@ -607,6 +608,96 @@ function MiscModule.CreateUI(parent)
     yPos = yPos + 50
 
     -- ============================================
+    -- AUTO FARM
+    -- ============================================
+    yPos = yPos + 10
+    yPos = createSectionTitle("AUTO FARM", yPos)
+
+    getgenv().AutoFarmSettings = getgenv().AutoFarmSettings or { Enabled = false }
+
+    local autoFarmActive = false
+    local autoFarmBtn = Instance.new("TextButton")
+    autoFarmBtn.Size = UDim2.new(1, -20, 0, 40)
+    autoFarmBtn.Position = UDim2.new(0, 10, 0, yPos)
+    autoFarmBtn.BackgroundColor3 = BTN_OFF
+    autoFarmBtn.BorderSizePixel = 0
+    autoFarmBtn.AutoButtonColor = false
+    autoFarmBtn.Text = "AutoFarm: OFF"
+    autoFarmBtn.Font = Enum.Font.GothamBold
+    autoFarmBtn.TextSize = 14
+    autoFarmBtn.TextColor3 = TEXT_COL
+    autoFarmBtn.ZIndex = 68
+    autoFarmBtn.Parent = miscContent
+
+    autoFarmBtn.MouseEnter:Connect(function()
+        if not autoFarmActive then autoFarmBtn.BackgroundColor3 = BTN_ON end
+    end)
+    autoFarmBtn.MouseLeave:Connect(function()
+        if not autoFarmActive then autoFarmBtn.BackgroundColor3 = BTN_OFF end
+    end)
+
+    autoFarmBtn.MouseButton1Click:Connect(function()
+        autoFarmActive = not autoFarmActive
+
+        if autoFarmActive then
+            autoFarmBtn.Text = "Loading..."
+            autoFarmBtn.BackgroundColor3 = BTN_ON
+
+            if not LoadedTools.AutoFarm then
+                local tool = loadTool("AutoFarm", ToolURLs.AutoFarm)
+                if not tool and not getgenv().AutoFarmControl then
+                    warn("Failed to load AutoFarm script")
+                    autoFarmActive = false
+                    autoFarmBtn.Text = "AutoFarm: FAILED"
+                    task.wait(1)
+                    autoFarmBtn.Text = "AutoFarm: OFF"
+                    autoFarmBtn.BackgroundColor3 = BTN_OFF
+                    return
+                end
+            end
+
+            if getgenv().AutoFarmControl then
+                getgenv().AutoFarmControl.Start()
+            end
+            getgenv().AutoFarmSettings.Enabled = true
+            autoFarmBtn.Text = "AutoFarm: ON"
+            autoFarmBtn.BackgroundColor3 = BTN_ON
+        else
+            if getgenv().AutoFarmControl then
+                getgenv().AutoFarmControl.Stop()
+            end
+            getgenv().AutoFarmSettings.Enabled = false
+            autoFarmBtn.Text = "AutoFarm: OFF"
+            autoFarmBtn.BackgroundColor3 = BTN_OFF
+        end
+    end)
+    yPos = yPos + 48
+
+    -- AutoFarm info
+    local farmInfoBg = Instance.new("Frame")
+    farmInfoBg.Size = UDim2.new(1, -20, 0, 55)
+    farmInfoBg.Position = UDim2.new(0, 10, 0, yPos)
+    farmInfoBg.BackgroundColor3 = TXT_BG
+    farmInfoBg.BorderSizePixel = 0
+    farmInfoBg.ZIndex = 66
+    farmInfoBg.Parent = miscContent
+
+    local farmInfo = Instance.new("TextLabel")
+    farmInfo.Size = UDim2.new(1, -8, 1, 0)
+    farmInfo.Position = UDim2.new(0, 4, 0, 0)
+    farmInfo.BackgroundTransparency = 1
+    farmInfo.Text = "Monsters: Pathfind to nearest Human,\nattack at 7 studs range.\nHumans: Pathfind to nearest Monster,\nattack at 4 studs until dead."
+    farmInfo.Font = Enum.Font.Gotham
+    farmInfo.TextSize = 11
+    farmInfo.TextColor3 = TEXT_COL
+    farmInfo.TextXAlignment = Enum.TextXAlignment.Left
+    farmInfo.TextYAlignment = Enum.TextYAlignment.Top
+    farmInfo.TextWrapped = true
+    farmInfo.ZIndex = 67
+    farmInfo.Parent = farmInfoBg
+    yPos = yPos + 60
+
+    -- ============================================
     -- RAGDOLL CONTROL
     -- ============================================
     yPos = yPos + 10
@@ -817,6 +908,9 @@ function MiscModule.Cleanup()
     if getgenv().AntiRagdollConnection then
         pcall(function() getgenv().AntiRagdollConnection:Disconnect() end)
         getgenv().AntiRagdollConnection = nil
+    end
+    if getgenv().AutoFarmControl then
+        pcall(function() getgenv().AutoFarmControl.Stop() end)
     end
 end
 
