@@ -1,0 +1,270 @@
+-- AutoFarm
+-- Monsters team: pathfind to nearest Human, click at distance <= 7
+-- Humans team: pathfind to nearest Monster, click at distance <= 4 until dead
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local PathfindingService = game:GetService("PathfindingService")
+local LP = Players.LocalPlayer
+
+local running = false
+local loopThread = nil
+
+local MONSTER_RANGE = 7
+local HUMAN_RANGE = 4
+local PATHFIND_INTERVAL = 0.2
+local CLICK_COOLDOWN = 0.15
+
+local function getRoot(player)
+    local c = player.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHumanoid(player)
+    local c = player.Character
+    return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+local function isAlive(player)
+    local hum = getHumanoid(player)
+    return hum and hum.Health > 0
+end
+
+local function getTeam(player)
+    if player.Team then return player.Team.Name end
+    return nil
+end
+
+local function isMonster(player)
+    return getTeam(player) == "Monsters"
+end
+
+local function isHuman(player)
+    return getTeam(player) == "Humans"
+end
+
+local function distanceTo(player)
+    local a = getRoot(LP)
+    local b = getRoot(player)
+    if not a or not b then return math.huge end
+    return (a.Position - b.Position).Magnitude
+end
+
+local function findNearestEnemy()
+    local myTeam = getTeam(LP)
+    if not myTeam then return nil end
+
+    local isEnemy
+    if myTeam == "Monsters" then
+        isEnemy = isHuman
+    elseif myTeam == "Humans" then
+        isEnemy = isMonster
+    else
+        return nil
+    end
+
+    local nearest = nil
+    local nearestDist = math.huge
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and isEnemy(p) and isAlive(p) then
+            local dist = distanceTo(p)
+            if dist < nearestDist then
+                nearest = p
+                nearestDist = dist
+            end
+        end
+    end
+
+    return nearest, nearestDist
+end
+
+local function click()
+    pcall(function()
+        mouse1press()
+        task.defer(function()
+            mouse1release()
+        end)
+    end)
+end
+
+local function getAttackRange()
+    local myTeam = getTeam(LP)
+    if myTeam == "Monsters" then
+        return MONSTER_RANGE
+    else
+        return HUMAN_RANGE
+    end
+end
+
+-- pathfind to target position
+local function pathfindTo(targetPos)
+    local root = getRoot(LP)
+    if not root then return false end
+
+    local path = PathfindingService:CreatePath({
+        AgentRadius = 2,
+        AgentHeight = 5,
+        AgentCanJump = true,
+        AgentCanClimb = false,
+        WaypointSpacing = 4
+    })
+
+    local success = pcall(function()
+        path:ComputeAsync(root.Position, targetPos)
+    end)
+
+    if not success or path.Status ~= Enum.PathStatus.Success then
+        return false
+    end
+
+    return path:GetWaypoints()
+end
+
+local function moveToPoint(point)
+    local hum = getHumanoid(LP)
+    if not hum then return end
+    hum:MoveTo(point)
+end
+
+local function stopMoving()
+    local hum = getHumanoid(LP)
+    if hum then
+        local root = getRoot(LP)
+        if root then
+            hum:MoveTo(root.Position)
+        end
+    end
+end
+
+local function mainLoop()
+    while running do
+        if not isAlive(LP) then
+            task.wait(1)
+            continue
+        end
+
+        local target, dist = findNearestEnemy()
+
+        if not target then
+            stopMoving()
+            task.wait(0.5)
+            continue
+        end
+
+        local attackRange = getAttackRange()
+
+        -- in range: attack
+        if dist <= attackRange then
+            -- face the target
+            local root = getRoot(LP)
+            local tRoot = getRoot(target)
+            if root and tRoot then
+                local dir = (tRoot.Position - root.Position).Unit
+                local lookCF = CFrame.lookAt(root.Position, root.Position + Vector3.new(dir.X, 0, dir.Z))
+                root.CFrame = lookCF
+            end
+
+            click()
+            task.wait(CLICK_COOLDOWN)
+
+            -- keep attacking until dead or out of range (for Humans vs Monsters)
+            if getTeam(LP) == "Humans" and isAlive(target) and distanceTo(target) <= attackRange then
+                continue
+            end
+        else
+            -- pathfind to target
+            local tRoot = getRoot(target)
+            if not tRoot then
+                task.wait(0.3)
+                continue
+            end
+
+            local waypoints = pathfindTo(tRoot.Position)
+
+            if waypoints then
+                for i = 2, #waypoints do
+                    if not running then return end
+                    if not isAlive(LP) then break end
+
+                    -- re-check if target still valid
+                    if not isAlive(target) then break end
+
+                    local newDist = distanceTo(target)
+                    if newDist <= attackRange then break end
+
+                    -- check if a closer enemy appeared
+                    local newTarget = findNearestEnemy()
+                    if newTarget and newTarget ~= target then
+                        local newTargetDist = distanceTo(newTarget)
+                        if newTargetDist < newDist - 5 then
+                            break -- repath to new closer target
+                        end
+                    end
+
+                    local wp = waypoints[i]
+
+                    if wp.Action == Enum.PathWaypointAction.Jump then
+                        local hum = getHumanoid(LP)
+                        if hum then hum.Jump = true end
+                    end
+
+                    moveToPoint(wp.Position)
+
+                    -- wait until close to waypoint or timeout
+                    local elapsed = 0
+                    while running and elapsed < 1 do
+                        local root = getRoot(LP)
+                        if not root then break end
+                        local wpDist = (root.Position - wp.Position).Magnitude
+                        if wpDist < 4 then break end
+
+                        -- also break if we're now in attack range
+                        if distanceTo(target) <= attackRange then break end
+
+                        task.wait(PATHFIND_INTERVAL)
+                        elapsed = elapsed + PATHFIND_INTERVAL
+                    end
+                end
+            else
+                -- pathfinding failed, walk directly
+                local tRoot2 = getRoot(target)
+                if tRoot2 then
+                    moveToPoint(tRoot2.Position)
+                end
+                task.wait(0.5)
+            end
+        end
+
+        task.wait(PATHFIND_INTERVAL)
+    end
+end
+
+local function start()
+    if running then return end
+    running = true
+
+    loopThread = task.spawn(mainLoop)
+    print("[AutoFarm] ON - Team: " .. tostring(getTeam(LP)))
+end
+
+local function stop()
+    running = false
+    stopMoving()
+    print("[AutoFarm] OFF")
+end
+
+local AutoFarm = {
+    Start = start,
+    Stop = stop,
+    IsRunning = function() return running end
+}
+
+getgenv().AutoFarmControl = AutoFarm
+
+if getgenv().AutoFarmSettings and getgenv().AutoFarmSettings.Enabled then
+    start()
+end
+
+print("[AutoFarm] Loaded")
+return AutoFarm
