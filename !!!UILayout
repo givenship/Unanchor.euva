@@ -23,7 +23,7 @@ Layout.CurrentTab = nil
 Layout.Blur = nil
 
 local player = Players.LocalPlayer
-local guiTransValue = 0.4
+local guiTransValue = 0.1
 
 local function tween(obj, info, props)
     local t = TweenService:Create(obj, info, props)
@@ -56,34 +56,6 @@ function Layout.Create(CoreGui)
     Layout.Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     Layout.Gui.Parent = CoreGui
     
-    -- Outer lines container
-    local outerLines = Instance.new("Frame")
-    outerLines.Name = "OuterLines"
-    outerLines.BackgroundTransparency = 1
-    outerLines.Size = UDim2.new(1, 0, 1, 0)
-    outerLines.ZIndex = 5
-    outerLines.Parent = Layout.Gui
-    
-    local function createOuterLine(size, pos)
-        local f = Instance.new("Frame")
-        f.BackgroundColor3 = THEME.Line
-        f.BackgroundTransparency = 0.35
-        f.BorderSizePixel = 0
-        f.Size = size
-        f.Position = pos
-        f.ZIndex = 5
-        f.Active = false
-        f.Selectable = false
-        f.Parent = outerLines
-        return f
-    end
-    
-    -- Outer border lines
-    createOuterLine(UDim2.new(0, 820, 0, 1), UDim2.new(0.5, -410, 0.5, -260)) -- top
-    createOuterLine(UDim2.new(0, 820, 0, 1), UDim2.new(0.5, -410, 0.5, 260))  -- bottom
-    createOuterLine(UDim2.new(0, 1, 0, 520), UDim2.new(0.5, -410, 0.5, -260)) -- left
-    createOuterLine(UDim2.new(0, 1, 0, 520), UDim2.new(0.5, 410, 0.5, -260))  -- right
-    
     -- Main frame
     Layout.MainFrame = Instance.new("Frame")
     Layout.MainFrame.Name = "MainFrame"
@@ -100,6 +72,34 @@ function Layout.Create(CoreGui)
     local mainCorner = Instance.new("UICorner")
     mainCorner.CornerRadius = UDim.new(0, 12)
     mainCorner.Parent = Layout.MainFrame
+    
+    -- Outer lines container (parented to MainFrame)
+    local outerLines = Instance.new("Frame")
+    outerLines.Name = "OuterLines"
+    outerLines.BackgroundTransparency = 1
+    outerLines.Size = UDim2.new(1, 0, 1, 0)
+    outerLines.ZIndex = 5
+    outerLines.Parent = Layout.MainFrame
+    
+    local function createOuterLine(size, pos)
+        local f = Instance.new("Frame")
+        f.BackgroundColor3 = THEME.Line
+        f.BackgroundTransparency = 0.35
+        f.BorderSizePixel = 0
+        f.Size = size
+        f.Position = pos
+        f.ZIndex = 5
+        f.Active = false
+        f.Selectable = false
+        f.Parent = outerLines
+        return f
+    end
+    
+    -- Outer border lines (relative to MainFrame now)
+    createOuterLine(UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 0, 0))   -- top
+    createOuterLine(UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 1, -1))  -- bottom
+    createOuterLine(UDim2.new(0, 1, 1, 0), UDim2.new(0, 0, 0, 0))   -- left
+    createOuterLine(UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0))  -- right
     
     -- Grid lines
     Layout.CreateGridLines()
@@ -253,12 +253,35 @@ function Layout.CreateContentArea()
     Layout.ContentTitle.Size = UDim2.new(1, -280, 0, 40)
     Layout.ContentTitle.BackgroundTransparency = 1
     Layout.ContentTitle.Text = "Welcome"
-    Layout.ContentTitle.Font = Enum.Font.Code
+    Layout.ContentTitle.Font = Enum.Font.Gotham
     Layout.ContentTitle.TextSize = 28
-    Layout.ContentTitle.TextColor3 = THEME.Text
+    Layout.ContentTitle.TextColor3 = Color3.fromRGB(0, 0, 0)
     Layout.ContentTitle.TextXAlignment = Enum.TextXAlignment.Left
     Layout.ContentTitle.ZIndex = 20
     Layout.ContentTitle.Parent = Layout.ContentArea
+    
+    -- Underline for ContentTitle (animated)
+    Layout.ContentUnderline = Instance.new("Frame")
+    Layout.ContentUnderline.Name = "ContentUnderline"
+    Layout.ContentUnderline.Size = UDim2.new(0, 0, 0, 2)
+    Layout.ContentUnderline.Position = UDim2.new(0, 0, 1, -2)
+    Layout.ContentUnderline.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    Layout.ContentUnderline.BackgroundTransparency = 0
+    Layout.ContentUnderline.BorderSizePixel = 0
+    Layout.ContentUnderline.ZIndex = 21
+    Layout.ContentUnderline.Parent = Layout.ContentTitle
+    
+    -- Text cursor for ContentTitle (animated)
+    Layout.ContentCursor = Instance.new("Frame")
+    Layout.ContentCursor.Name = "ContentCursor"
+    Layout.ContentCursor.Size = UDim2.new(0, 2, 0, 24)
+    Layout.ContentCursor.Position = UDim2.new(0, 0, 0.5, -12)
+    Layout.ContentCursor.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    Layout.ContentCursor.BackgroundTransparency = 0
+    Layout.ContentCursor.BorderSizePixel = 0
+    Layout.ContentCursor.ZIndex = 21
+    Layout.ContentCursor.Visible = false
+    Layout.ContentCursor.Parent = Layout.ContentTitle
     
     -- Server info
     Layout.CreateServerInfo()
@@ -283,13 +306,48 @@ function Layout.CreateContentArea()
     contentLayout.Parent = Layout.ContentScroll
 end
 
+function Layout.PlayTitleAnimation()
+    -- Animate underline expanding from left
+    Layout.ContentUnderline.Size = UDim2.new(0, 0, 0, 2)
+    Layout.ContentUnderline.BackgroundTransparency = 0
+    
+    tween(Layout.ContentUnderline, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.new(1, 0, 0, 2)
+    })
+    
+    -- Show blinking cursor
+    Layout.ContentCursor.Visible = true
+    Layout.ContentCursor.BackgroundTransparency = 0
+    
+    -- Position cursor at end of text
+    local textWidth = Layout.ContentTitle.TextBounds and Layout.ContentTitle.TextBounds.X or 80
+    Layout.ContentCursor.Position = UDim2.new(0, textWidth + 4, 0.5, -12)
+    
+    -- Blink cursor then fade
+    task.spawn(function()
+        for i = 1, 3 do
+            Layout.ContentCursor.BackgroundTransparency = 0
+            task.wait(0.08)
+            Layout.ContentCursor.BackgroundTransparency = 1
+            task.wait(0.08)
+        end
+        Layout.ContentCursor.Visible = false
+        
+        -- Fade underline after 0.5s total
+        task.wait(0.02)
+        tween(Layout.ContentUnderline, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+            BackgroundTransparency = 1
+        })
+    end)
+end
+
 function Layout.CreateServerInfo()
     local THEME = Layout.Theme.Colors
     
     local serverInfoFrame = Instance.new("Frame")
     serverInfoFrame.Name = "ServerInfoFrame"
-    serverInfoFrame.Size = UDim2.new(0, 260, 0, 54)
-    serverInfoFrame.Position = UDim2.new(1, -450, 0, 0)
+    serverInfoFrame.Size = UDim2.new(0, 300, 0, 50)
+    serverInfoFrame.Position = UDim2.new(1, -470, 0, -15)
     serverInfoFrame.BackgroundColor3 = THEME.Soft
     serverInfoFrame.BackgroundTransparency = 0.35
     serverInfoFrame.BorderSizePixel = 0
@@ -315,17 +373,17 @@ function Layout.CreateServerInfo()
     
     Layout.GameNameLabel = Instance.new("TextLabel")
     Layout.GameNameLabel.BackgroundTransparency = 1
-    Layout.GameNameLabel.Size = UDim2.new(1, 0, 0, 14)
+    Layout.GameNameLabel.Size = UDim2.new(1, 0, 0, 12)
     Layout.GameNameLabel.Font = Enum.Font.Gotham
-    Layout.GameNameLabel.TextSize = 12
-    Layout.GameNameLabel.TextColor3 = THEME.TextMuted
+    Layout.GameNameLabel.TextSize = 11
+    Layout.GameNameLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
     Layout.GameNameLabel.TextXAlignment = Enum.TextXAlignment.Right
     Layout.GameNameLabel.ZIndex = 26
     Layout.GameNameLabel.Parent = serverInfoFrame
     
     local jobRow = Instance.new("Frame")
     jobRow.BackgroundTransparency = 1
-    jobRow.Size = UDim2.new(1, 0, 0, 14)
+    jobRow.Size = UDim2.new(1, 0, 0, 12)
     jobRow.ZIndex = 26
     jobRow.Parent = serverInfoFrame
     
@@ -335,8 +393,8 @@ function Layout.CreateServerInfo()
     Layout.JobTextBox.ClearTextOnFocus = false
     Layout.JobTextBox.TextEditable = true
     Layout.JobTextBox.Font = Enum.Font.Gotham
-    Layout.JobTextBox.TextSize = 12
-    Layout.JobTextBox.TextColor3 = THEME.TextMuted
+    Layout.JobTextBox.TextSize = 11
+    Layout.JobTextBox.TextColor3 = Color3.fromRGB(0, 0, 0)
     Layout.JobTextBox.TextXAlignment = Enum.TextXAlignment.Right
     Layout.JobTextBox.ZIndex = 26
     Layout.JobTextBox.Parent = jobRow
@@ -347,18 +405,18 @@ function Layout.CreateServerInfo()
     copyJob.BackgroundTransparency = 1
     copyJob.Text = "[Copy]"
     copyJob.Font = Enum.Font.GothamBold
-    copyJob.TextSize = 12
-    copyJob.TextColor3 = THEME.Text
+    copyJob.TextSize = 11
+    copyJob.TextColor3 = Color3.fromRGB(0, 0, 0)
     copyJob.TextWrapped = true
     copyJob.ZIndex = 27
     copyJob.Parent = jobRow
     
     Layout.PlayerCountLabel = Instance.new("TextLabel")
     Layout.PlayerCountLabel.BackgroundTransparency = 1
-    Layout.PlayerCountLabel.Size = UDim2.new(1, 0, 0, 14)
+    Layout.PlayerCountLabel.Size = UDim2.new(1, 0, 0, 12)
     Layout.PlayerCountLabel.Font = Enum.Font.Gotham
-    Layout.PlayerCountLabel.TextSize = 12
-    Layout.PlayerCountLabel.TextColor3 = THEME.TextMuted
+    Layout.PlayerCountLabel.TextSize = 11
+    Layout.PlayerCountLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
     Layout.PlayerCountLabel.TextXAlignment = Enum.TextXAlignment.Right
     Layout.PlayerCountLabel.ZIndex = 26
     Layout.PlayerCountLabel.Parent = serverInfoFrame
@@ -419,23 +477,26 @@ function Layout.CreateUserPanel()
     nameLayout.Padding = UDim.new(0, 0)
     nameLayout.Parent = nameCol
     
+    -- User Information labels (NO square background per user request)
     local usernameLabel = Instance.new("TextLabel")
+    usernameLabel.Name = "UserInformation"
     usernameLabel.BackgroundTransparency = 1
     usernameLabel.Size = UDim2.new(1, 0, 0, 18)
     usernameLabel.Font = Enum.Font.GothamBold
     usernameLabel.TextSize = 13
-    usernameLabel.TextColor3 = THEME.Text
+    usernameLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
     usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
     usernameLabel.Text = "@" .. player.Name
     usernameLabel.ZIndex = 21
     usernameLabel.Parent = nameCol
     
     local displayLabel = Instance.new("TextLabel")
+    displayLabel.Name = "UserInformation"
     displayLabel.BackgroundTransparency = 1
     displayLabel.Size = UDim2.new(1, 0, 0, 18)
     displayLabel.Font = Enum.Font.Gotham
     displayLabel.TextSize = 12
-    displayLabel.TextColor3 = THEME.TextMuted
+    displayLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
     displayLabel.TextXAlignment = Enum.TextXAlignment.Left
     displayLabel.Text = player.DisplayName .. "  |  ID: " .. player.UserId
     displayLabel.ZIndex = 21
@@ -446,7 +507,7 @@ function Layout.CreateUserPanel()
     Layout.StatsLabel.Size = UDim2.new(1, 0, 0, 16)
     Layout.StatsLabel.Font = Enum.Font.Gotham
     Layout.StatsLabel.TextSize = 11
-    Layout.StatsLabel.TextColor3 = THEME.TextMuted
+    Layout.StatsLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
     Layout.StatsLabel.TextXAlignment = Enum.TextXAlignment.Left
     Layout.StatsLabel.ZIndex = 21
     Layout.StatsLabel.Parent = userPanel
@@ -456,7 +517,7 @@ function Layout.CreateUserPanel()
     Layout.MoneyLabel.Size = UDim2.new(1, 0, 0, 16)
     Layout.MoneyLabel.Font = Enum.Font.Gotham
     Layout.MoneyLabel.TextSize = 11
-    Layout.MoneyLabel.TextColor3 = THEME.TextMuted
+    Layout.MoneyLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
     Layout.MoneyLabel.TextXAlignment = Enum.TextXAlignment.Left
     Layout.MoneyLabel.ZIndex = 21
     Layout.MoneyLabel.Parent = userPanel
@@ -513,7 +574,7 @@ function Layout.CreateTopButtons()
         btn.Text = symbol
         btn.Font = Enum.Font.GothamBold
         btn.TextSize = 24
-        btn.TextColor3 = THEME.Text
+        btn.TextColor3 = Color3.fromRGB(0, 0, 0)
         btn.ZIndex = 80
         btn.Parent = Layout.MainFrame
         
@@ -624,7 +685,7 @@ function Layout.CreateTab(tabName)
     tabBtn.Text = tabName
     tabBtn.Font = Enum.Font.Gotham
     tabBtn.TextSize = 14
-    tabBtn.TextColor3 = THEME.TextMuted
+    tabBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
     tabBtn.TextXAlignment = Enum.TextXAlignment.Left
     tabBtn.ZIndex = 12
     tabBtn.Parent = Layout.TabContainer
@@ -652,14 +713,17 @@ function Layout.CreateTab(tabName)
         for _, f in pairs(Layout.TabFrames) do f.Visible = false end
         for _, b in pairs(Layout.TabButtons) do
             b.BackgroundTransparency = 1
-            b.TextColor3 = THEME.TextMuted
+            b.TextColor3 = Color3.fromRGB(80, 80, 80)
         end
         
         tabFrame.Visible = true
         tabBtn.BackgroundTransparency = 0
-        tabBtn.TextColor3 = THEME.Text
+        tabBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
         Layout.ContentTitle.Text = tabName
         Layout.CurrentTab = tabFrame
+        
+        -- Play title animation
+        Layout.PlayTitleAnimation()
     end
     
     tabBtn.MouseButton1Click:Connect(select)
@@ -671,6 +735,10 @@ end
 function Layout.SetGuiTransparency(value)
     guiTransValue = value
     Layout.MainFrame.BackgroundTransparency = guiTransValue * 0.7
+end
+
+function Layout.GetGuiTransparency()
+    return guiTransValue
 end
 
 function Layout.SetBlur(value)
