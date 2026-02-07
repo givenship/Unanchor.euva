@@ -1,8 +1,6 @@
 -- Misc Module
 -- Loads tools from GitHub and provides Reset Rotation & Clear All Forces
 
-print("jarvis jerk it a little")
-
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -64,6 +62,206 @@ function MiscModule.CreateUI(parent)
     miscContent.ScrollBarThickness = 4
     miscContent.ScrollBarImageColor3 = Color3.fromRGB(200, 180, 190)
     miscContent.Parent = parent
+
+    -- ============================================
+    -- KEY GATE
+    -- ============================================
+    local KEY = "Groupissue"
+
+    -- check if already unlocked this session
+    if not (getgenv().MiscKeyUnlocked == true) then
+
+        local keyFrame = Instance.new("Frame")
+        keyFrame.Size = UDim2.new(1, 0, 1, 0)
+        keyFrame.BackgroundTransparency = 1
+        keyFrame.ZIndex = 100
+        keyFrame.Parent = miscContent
+
+        local yK = 15
+
+        -- title
+        local titleLabel = Instance.new("TextLabel")
+        titleLabel.Size = UDim2.new(1, -20, 0, 30)
+        titleLabel.Position = UDim2.new(0, 10, 0, yK)
+        titleLabel.BackgroundColor3 = TXT_BG
+        titleLabel.BorderSizePixel = 0
+        titleLabel.Text = "Key and group join are required for Misc"
+        titleLabel.Font = Enum.Font.GothamBold
+        titleLabel.TextSize = 13
+        titleLabel.TextColor3 = TEXT_COL
+        titleLabel.TextWrapped = true
+        titleLabel.ZIndex = 101
+        titleLabel.Parent = keyFrame
+        yK = yK + 40
+
+        -- helper function for info lines
+        local function addInfoLine(question, answer, pos)
+            local qLabel = Instance.new("TextLabel")
+            qLabel.Size = UDim2.new(1, -20, 0, 22)
+            qLabel.Position = UDim2.new(0, 10, 0, pos)
+            qLabel.BackgroundColor3 = TXT_BG
+            qLabel.BorderSizePixel = 0
+            qLabel.Text = question
+            qLabel.Font = Enum.Font.GothamBold
+            qLabel.TextSize = 12
+            qLabel.TextColor3 = TEXT_COL
+            qLabel.TextXAlignment = Enum.TextXAlignment.Left
+            qLabel.TextWrapped = true
+            qLabel.ZIndex = 101
+            qLabel.Parent = keyFrame
+            addPadding(qLabel, 6, 0)
+            pos = pos + 24
+
+            local aLabel = Instance.new("TextLabel")
+            aLabel.Size = UDim2.new(1, -20, 0, 28)
+            aLabel.Position = UDim2.new(0, 10, 0, pos)
+            aLabel.BackgroundTransparency = 1
+            aLabel.Text = answer
+            aLabel.Font = Enum.Font.Gotham
+            aLabel.TextSize = 11
+            aLabel.TextColor3 = TEXT_COL
+            aLabel.TextXAlignment = Enum.TextXAlignment.Left
+            aLabel.TextWrapped = true
+            aLabel.ZIndex = 101
+            aLabel.Parent = keyFrame
+            addPadding(aLabel, 14, 0)
+            return pos + 32
+        end
+
+        yK = addInfoLine(
+            "How to join Discord Server?",
+            "Tap That Blue button at Top Right",
+            yK
+        )
+
+        yK = addInfoLine(
+            "How do I join Group?",
+            "Tap The Yellow button then you'll copy group link and paste it to your browser",
+            yK
+        )
+
+        -- key updated info
+        local updLabel = Instance.new("TextLabel")
+        updLabel.Size = UDim2.new(1, -20, 0, 22)
+        updLabel.Position = UDim2.new(0, 10, 0, yK)
+        updLabel.BackgroundColor3 = TXT_BG
+        updLabel.BorderSizePixel = 0
+        updLabel.Text = "Key is Updated Every day"
+        updLabel.Font = Enum.Font.GothamBold
+        updLabel.TextSize = 12
+        updLabel.TextColor3 = TEXT_COL
+        updLabel.TextWrapped = true
+        updLabel.ZIndex = 101
+        updLabel.Parent = keyFrame
+        addPadding(updLabel, 6, 0)
+        yK = yK + 35
+
+        -- key input
+        local inputBg = Instance.new("Frame")
+        inputBg.Size = UDim2.new(1, -20, 0, 36)
+        inputBg.Position = UDim2.new(0, 10, 0, yK)
+        inputBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        inputBg.BorderSizePixel = 0
+        inputBg.ZIndex = 102
+        inputBg.Parent = keyFrame
+
+        local keyInput = Instance.new("TextBox")
+        keyInput.Size = UDim2.new(1, -8, 1, -4)
+        keyInput.Position = UDim2.new(0, 4, 0, 2)
+        keyInput.BackgroundTransparency = 1
+        keyInput.Text = ""
+        keyInput.PlaceholderText = "Enter Key..."
+        keyInput.Font = Enum.Font.Gotham
+        keyInput.TextSize = 14
+        keyInput.TextColor3 = TEXT_COL
+        keyInput.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+        keyInput.ClearTextOnFocus = false
+        keyInput.ZIndex = 103
+        keyInput.Parent = inputBg
+        yK = yK + 42
+
+        -- submit button
+        local submitBtn = Instance.new("TextButton")
+        submitBtn.Size = UDim2.new(1, -20, 0, 36)
+        submitBtn.Position = UDim2.new(0, 10, 0, yK)
+        submitBtn.BackgroundColor3 = BTN_OFF
+        submitBtn.BorderSizePixel = 0
+        submitBtn.AutoButtonColor = false
+        submitBtn.Text = "Submit Key"
+        submitBtn.Font = Enum.Font.GothamBold
+        submitBtn.TextSize = 14
+        submitBtn.TextColor3 = TEXT_COL
+        submitBtn.ZIndex = 102
+        submitBtn.Parent = keyFrame
+
+        submitBtn.MouseEnter:Connect(function() submitBtn.BackgroundColor3 = BTN_ON end)
+        submitBtn.MouseLeave:Connect(function() submitBtn.BackgroundColor3 = BTN_OFF end)
+
+        -- status label
+        local statusLabel = Instance.new("TextLabel")
+        statusLabel.Size = UDim2.new(1, -20, 0, 20)
+        statusLabel.Position = UDim2.new(0, 10, 0, yK + 42)
+        statusLabel.BackgroundTransparency = 1
+        statusLabel.Text = ""
+        statusLabel.Font = Enum.Font.Gotham
+        statusLabel.TextSize = 12
+        statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80)
+        statusLabel.ZIndex = 101
+        statusLabel.Parent = keyFrame
+
+        local GROUP_ID = 644808576
+
+        local function tryUnlock()
+            local entered = keyInput.Text
+            if entered ~= KEY then
+                statusLabel.Text = "Invalid Key"
+                statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80)
+                task.delay(2, function()
+                    if statusLabel and statusLabel.Parent then
+                        statusLabel.Text = ""
+                    end
+                end)
+                return
+            end
+
+            -- check group
+            statusLabel.Text = "Checking group..."
+            statusLabel.TextColor3 = TEXT_COL
+
+            local inGroup = false
+            pcall(function()
+                inGroup = game:GetService("Players").LocalPlayer:IsInGroup(GROUP_ID)
+            end)
+
+            if not inGroup then
+                statusLabel.Text = "You must join the Group first!"
+                statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80)
+                task.delay(3, function()
+                    if statusLabel and statusLabel.Parent then
+                        statusLabel.Text = ""
+                    end
+                end)
+                return
+            end
+
+            getgenv().MiscKeyUnlocked = true
+            keyFrame:Destroy()
+            miscContent:Destroy()
+            MiscModule.CreateUI(parent)
+        end
+
+        submitBtn.MouseButton1Click:Connect(tryUnlock)
+        keyInput.FocusLost:Connect(function(enterPressed)
+            if enterPressed then tryUnlock() end
+        end)
+
+        miscContent.CanvasSize = UDim2.new(0, 0, 0, yK + 70)
+        return miscContent
+    end
+
+    -- ============================================
+    -- MISC CONTENT (only shown after key unlock)
+    -- ============================================
 
     local yPos = 10
 
