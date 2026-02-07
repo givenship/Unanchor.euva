@@ -1,1300 +1,833 @@
--- Misc Module
--- Loads tools from GitHub and provides Reset Rotation & Clear All Forces
+-- AutoFarm v4
+-- Goes straight to target (walks off cliffs, no edge avoidance)
+-- Movement = XZ only (Y changes ignored)
+-- Idle 5s = auto left click
+-- Monsters: click within 30 studs, click if alive 20s without taking damage
+-- Humans: press "1" once on monster detect, 30cps, anti-back, target memory, waypoint
 
-local HttpService = game:GetService("HttpService")
-local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
+local VIS = game:GetService("VirtualInputManager")
+local LP = Players.LocalPlayer
 
-local MiscModule = {}
+-- ========== CONFIG ==========
+local JUMP_EVERY = 1
+local PREDICT = 0.3
+local Y_PENALTY = 3
+local MAX_Y = 50
+local JUMP_H = 8.5
+local MAX_OBS = 9
 
-local TEXT_COL = Color3.fromRGB(184, 193, 206)
-local BTN_OFF = Color3.fromRGB(255, 255, 255)
-local BTN_ON = Color3.fromRGB(184, 193, 206)
-local SLIDER_BG = Color3.fromRGB(255, 255, 255)
-local SLIDER_FILL = Color3.fromRGB(184, 193, 206)
-local CHECK_OFF = Color3.fromRGB(180, 180, 180)
-local CHECK_ON = Color3.fromRGB(255, 255, 255)
-local TXT_BG = Color3.fromRGB(255, 255, 255)
+local IDLE_TIME = 5
+local IDLE_DIST = 1
 
-local function addPadding(frame, lr, tb)
-    local pad = Instance.new("UIPadding")
-    pad.PaddingLeft = UDim.new(0, lr or 4)
-    pad.PaddingRight = UDim.new(0, lr or 4)
-    pad.PaddingTop = UDim.new(0, tb or 0)
-    pad.PaddingBottom = UDim.new(0, tb or 0)
-    pad.Parent = frame
-end
+local MONSTER_CLICK_RANGE = 30
+local MONSTER_NODMG_TIME = 20
 
-local ToolURLs = {
-    MoveTool = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/MoveTool",
-    RotateTool = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/RotateTool",
-    RingShape = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/RingShape",
-    RPMTool = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/RPMTool",
-    AutoFarm = "https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/AutoFarm"
+local HUMAN_CPS = 30
+local HUMAN_DETECT_RANGE = 30
+
+-- ========== STATE ==========
+local running = false
+local heartbeatConn = nil
+local lastJump = 0
+local lastClickTime = 0
+
+-- idle (XZ only)
+local idleXZ = nil
+local idleTimer = 0
+
+-- monsters
+local monsterLastHP = nil
+local monsterNoDmgStart = nil
+local lastSpawnPress = 0
+
+-- humans
+local pressedOne = false
+local memoryTarget = nil
+local circlePart = nil
+
+-- death tracking
+local deathConn = nil
+local charConn = nil
+
+-- tools to repair after death
+local REPAIR_TOOLS = {
+    "WoodenSword", "StoneSword", "IronSword", "Bow",
+    "GoldSword", "DiamondSword", "EmeraldAxe", "Trident", "ObsidianHammer"
 }
 
-local LoadedTools = {}
+-- pathfind (wall only)
+local pfWaypoints = nil
+local pfIndex = 2
+local pfPath = nil
+local pfKey = nil
+local pfTime = 0
+local pfBlockedConn = nil
+local pfActive = false
 
-local function loadTool(toolName, url)
-    if LoadedTools[toolName] then return LoadedTools[toolName] end
-    local success, result = pcall(function() return game:HttpGet(url) end)
-    if success then
-        local toolFunc, err = loadstring(result)
-        if toolFunc then
-            local tool = toolFunc()
-            LoadedTools[toolName] = tool
-            return tool
-        else
-            warn("Error loading " .. toolName .. ": " .. tostring(err))
-            return nil
+-- ========== SETTINGS ==========
+local function S()
+    return getgenv().AutoFarmSettings or {}
+end
+
+-- ========== RAYCAST ==========
+local rayP = RaycastParams.new()
+rayP.FilterType = Enum.RaycastFilterType.Exclude
+
+local function refreshRay()
+    local t = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character then t[#t + 1] = p.Character end
+    end
+    rayP.FilterDescendantsInstances = t
+end
+
+-- ========== CORE HELPERS ==========
+local function root(p)
+    local c = p.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+local function hum(p)
+    local c = p.Character
+    return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+local function alive(p)
+    local h = hum(p)
+    return h and h.Health > 0
+end
+
+local function team(p)
+    return p.Team and p.Team.Name
+end
+
+local function isMonster(p) return team(p) == "Monsters" end
+local function isHuman(p) return team(p) == "Humans" end
+
+local function dist3d(a, b)
+    local ra, rb = root(a), root(b)
+    if not ra or not rb then return math.huge end
+    return (ra.Position - rb.Position).Magnitude
+end
+
+local function distPos(p, pos)
+    local r = root(p)
+    if not r then return math.huge end
+    return (r.Position - pos).Magnitude
+end
+
+local function score(p)
+    local a, b = root(LP), root(p)
+    if not a or not b then return math.huge end
+    local d = a.Position - b.Position
+    local horiz = math.sqrt(d.X * d.X + d.Z * d.Z)
+    local vert = math.abs(d.Y)
+    if vert > MAX_Y then return math.huge end
+    return horiz + vert * Y_PENALTY
+end
+
+local function predict(p)
+    local r = root(p)
+    if not r then return nil end
+    local v = r.AssemblyLinearVelocity
+    return r.Position + Vector3.new(v.X, 0, v.Z) * PREDICT
+end
+
+local function getVel(p)
+    local r = root(p)
+    if not r then return Vector3.zero end
+    return r.AssemblyLinearVelocity
+end
+
+-- ========== INPUT ==========
+local function click()
+    pcall(function()
+        mouse1press()
+        task.defer(function() mouse1release() end)
+    end)
+end
+
+local function tapKey(keyCode)
+    pcall(function()
+        VIS:SendKeyEvent(true, keyCode, false, game)
+        task.defer(function()
+            VIS:SendKeyEvent(false, keyCode, false, game)
+        end)
+    end)
+end
+
+-- ========== MOVEMENT ==========
+local function moveTo(pos)
+    local h = hum(LP)
+    if h then h:MoveTo(pos) end
+end
+
+local function stopMov()
+    local h, r = hum(LP), root(LP)
+    if h and r then h:MoveTo(r.Position) end
+end
+
+local function face(tgt)
+    local a, b = root(LP), root(tgt)
+    if not a or not b then return end
+    local d = b.Position - a.Position
+    local flat = Vector3.new(d.X, 0, d.Z)
+    if flat.Magnitude < 0.1 then return end
+    a.CFrame = CFrame.lookAt(a.Position, a.Position + flat.Unit)
+end
+
+-- ========== JUMP ==========
+local function jump()
+    local h = hum(LP)
+    if not h then return end
+    h.JumpHeight = JUMP_H
+    h.UseJumpPower = false
+    local st = h:GetState()
+    if st == Enum.HumanoidStateType.Running
+        or st == Enum.HumanoidStateType.RunningNoPhysics
+        or st == Enum.HumanoidStateType.Landed
+        or st == Enum.HumanoidStateType.None then
+        h:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end
+
+local function tryJump()
+    local now = tick()
+    if now - lastJump >= JUMP_EVERY then
+        jump()
+        lastJump = now
+    end
+end
+
+-- ========== OBSTACLE (wall in front) ==========
+local function obsHeight()
+    local r = root(LP)
+    if not r then return 0 end
+    refreshRay()
+    local foot = r.Position - Vector3.new(0, 2.5, 0)
+    local fwd = r.CFrame.LookVector * 4
+    if not workspace:Raycast(foot, fwd, rayP) then return 0 end
+    for i = 1, 16 do
+        if not workspace:Raycast(foot + Vector3.new(0, i, 0), fwd, rayP) then
+            return i
         end
+    end
+    return 99
+end
+
+local function sidestep()
+    local r, h = root(LP), hum(LP)
+    if not r or not h then return end
+    refreshRay()
+    local rH = workspace:Raycast(r.Position, r.CFrame.RightVector * 6, rayP)
+    local lH = workspace:Raycast(r.Position, -r.CFrame.RightVector * 6, rayP)
+    if not rH then
+        h:MoveTo(r.Position + r.CFrame.RightVector * 5)
+    elseif not lH then
+        h:MoveTo(r.Position - r.CFrame.RightVector * 5)
     else
-        warn("Failed to download " .. toolName)
-        return nil
+        jump()
     end
 end
 
-function MiscModule.CreateUI(parent)
-    local miscContent = Instance.new("ScrollingFrame")
-    miscContent.Size = UDim2.new(1, 0, 1, 0)
-    miscContent.BackgroundTransparency = 1
-    miscContent.BorderSizePixel = 0
-    miscContent.ScrollBarThickness = 4
-    miscContent.ScrollBarImageColor3 = Color3.fromRGB(200, 180, 190)
-    miscContent.Parent = parent
+local function handleObs()
+    local h = obsHeight()
+    if h >= 2 and h <= MAX_OBS then
+        jump()
+    elseif h > MAX_OBS then
+        sidestep()
+    end
+end
 
-    -- ============================================
-    -- KEY GATE
-    -- ============================================
-    local KEY = "Groupissue"
+-- ========== WALL CHECK (no edge check) ==========
+local function hasWall(targetPos)
+    local r = root(LP)
+    if not r then return false end
+    refreshRay()
+    local dir = targetPos - r.Position
+    local flat = Vector3.new(dir.X, 0, dir.Z)
+    if flat.Magnitude < 2 then return false end
+    local d = math.min(flat.Magnitude, 30)
+    local hit = workspace:Raycast(r.Position, flat.Unit * d, rayP)
+    if not hit then return false end
+    if hit.Normal.Y > 0.8 then return false end
+    return true
+end
 
-    -- check if already unlocked this session
-    if not (getgenv().MiscKeyUnlocked == true) then
+-- ========== IDLE DETECTION (XZ ONLY, ignore Y) ==========
+local function checkIdle(dt)
+    local r = root(LP)
+    if not r then return false end
 
-        local keyFrame = Instance.new("Frame")
-        keyFrame.Size = UDim2.new(1, 0, 1, 0)
-        keyFrame.BackgroundTransparency = 1
-        keyFrame.ZIndex = 100
-        keyFrame.Parent = miscContent
+    local xz = Vector2.new(r.Position.X, r.Position.Z)
 
-        local yK = 15
+    if idleXZ then
+        local moved = (xz - idleXZ).Magnitude
+        if moved < IDLE_DIST then
+            idleTimer = idleTimer + dt
+            if idleTimer >= IDLE_TIME then
+                idleTimer = 0
+                idleXZ = xz
+                return true
+            end
+            idleXZ = xz
+            return false
+        end
+    end
 
-        -- title
-        local titleLabel = Instance.new("TextLabel")
-        titleLabel.Size = UDim2.new(1, -20, 0, 30)
-        titleLabel.Position = UDim2.new(0, 10, 0, yK)
-        titleLabel.BackgroundColor3 = TXT_BG
-        titleLabel.BorderSizePixel = 0
-        titleLabel.Text = "Key and group join are required for Misc"
-        titleLabel.Font = Enum.Font.GothamBold
-        titleLabel.TextSize = 13
-        titleLabel.TextColor3 = TEXT_COL
-        titleLabel.TextWrapped = true
-        titleLabel.ZIndex = 101
-        titleLabel.Parent = keyFrame
-        yK = yK + 40
+    -- moved: reset
+    idleTimer = 0
+    idleXZ = xz
+    return false
+end
 
-        -- helper function for info lines
-        local function addInfoLine(question, answer, pos)
-            local qLabel = Instance.new("TextLabel")
-            qLabel.Size = UDim2.new(1, -20, 0, 22)
-            qLabel.Position = UDim2.new(0, 10, 0, pos)
-            qLabel.BackgroundColor3 = TXT_BG
-            qLabel.BorderSizePixel = 0
-            qLabel.Text = question
-            qLabel.Font = Enum.Font.GothamBold
-            qLabel.TextSize = 12
-            qLabel.TextColor3 = TEXT_COL
-            qLabel.TextXAlignment = Enum.TextXAlignment.Left
-            qLabel.TextWrapped = true
-            qLabel.ZIndex = 101
-            qLabel.Parent = keyFrame
-            addPadding(qLabel, 6, 0)
-            pos = pos + 24
+-- ========== CIRCLE ==========
+local function destroyCircle()
+    if circlePart then
+        pcall(function() circlePart:Destroy() end)
+        circlePart = nil
+    end
+end
 
-            local aLabel = Instance.new("TextLabel")
-            aLabel.Size = UDim2.new(1, -20, 0, 28)
-            aLabel.Position = UDim2.new(0, 10, 0, pos)
-            aLabel.BackgroundTransparency = 1
-            aLabel.Text = answer
-            aLabel.Font = Enum.Font.Gotham
-            aLabel.TextSize = 11
-            aLabel.TextColor3 = TEXT_COL
-            aLabel.TextXAlignment = Enum.TextXAlignment.Left
-            aLabel.TextWrapped = true
-            aLabel.ZIndex = 101
-            aLabel.Parent = keyFrame
-            addPadding(aLabel, 14, 0)
-            return pos + 32
+local function updateCircle()
+    local s = S()
+    if not s.ShowCircle or not running then
+        destroyCircle()
+        return
+    end
+    local r = root(LP)
+    if not r then destroyCircle() return end
+    local radius = s.DetectRadius or HUMAN_DETECT_RANGE
+    if not circlePart or not circlePart.Parent then
+        circlePart = Instance.new("Part")
+        circlePart.Name = "AutoFarmCircle"
+        circlePart.Shape = Enum.PartType.Cylinder
+        circlePart.Anchored = true
+        circlePart.CanCollide = false
+        circlePart.Material = Enum.Material.ForceField
+        circlePart.Transparency = 0.75
+        circlePart.Parent = workspace
+    end
+    circlePart.Size = Vector3.new(0.1, radius * 2, radius * 2)
+    circlePart.CFrame = CFrame.new(r.Position.X, r.Position.Y - 3, r.Position.Z) * CFrame.Angles(0, 0, math.rad(90))
+    local found = false
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and isMonster(p) and alive(p) and dist3d(LP, p) <= radius then
+            found = true
+            break
+        end
+    end
+    circlePart.Color = found and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
+end
+
+-- ========== PATHFIND (wall bypass only) ==========
+local function clearPF()
+    pfWaypoints = nil
+    pfIndex = 2
+    if pfBlockedConn then pcall(function() pfBlockedConn:Disconnect() end) pfBlockedConn = nil end
+    pfPath = nil
+    pfKey = nil
+    pfActive = false
+end
+
+local function makePath(targetPos)
+    local r = root(LP)
+    if not r then return false end
+    local path = PathfindingService:CreatePath({
+        AgentRadius = 2, AgentHeight = 5,
+        AgentCanJump = true, WaypointSpacing = 3
+    })
+    local ok = pcall(function() path:ComputeAsync(r.Position, targetPos) end)
+    if not ok or path.Status ~= Enum.PathStatus.Success then return false end
+    if pfBlockedConn then pcall(function() pfBlockedConn:Disconnect() end) end
+    pfPath = path
+    pfWaypoints = path:GetWaypoints()
+    pfIndex = 2
+    pfBlockedConn = path.Blocked:Connect(function() clearPF() end)
+    return true
+end
+
+local function nextWP()
+    if not pfWaypoints then return nil end
+    while pfIndex <= #pfWaypoints do
+        local wp = pfWaypoints[pfIndex]
+        local r = root(LP)
+        if not r then return nil end
+        local toWp = wp.Position - r.Position
+        local behind = (toWp.X * r.CFrame.LookVector.X + toWp.Z * r.CFrame.LookVector.Z) < -1
+        if (r.Position - wp.Position).Magnitude < 3 or behind then
+            pfIndex = pfIndex + 1
+        else
+            return wp
+        end
+    end
+    clearPF()
+    return nil
+end
+
+-- ========== GO TO (straight, pathfind only for walls) ==========
+local function goTo(targetPos, key)
+    local r = root(LP)
+    if not r then return end
+
+    -- currently pathfinding around wall
+    if pfActive then
+        if not hasWall(targetPos) then
+            clearPF()
+            moveTo(targetPos)
+            handleObs()
+            return
+        end
+        local now = tick()
+        if not pfWaypoints or pfKey ~= key or now - pfTime > 1.5 then
+            makePath(targetPos)
+            pfKey = key
+            pfTime = now
+        end
+        local wp = nextWP()
+        if wp then
+            if wp.Action == Enum.PathWaypointAction.Jump then jump() end
+            handleObs()
+            moveTo(wp.Position)
+        else
+            moveTo(targetPos)
+            handleObs()
+        end
+        return
+    end
+
+    -- go straight (even off cliffs)
+    if not hasWall(targetPos) then
+        moveTo(targetPos)
+        handleObs()
+        return
+    end
+
+    -- wall: jumpable?
+    local oh = obsHeight()
+    if oh >= 2 and oh <= MAX_OBS then
+        jump()
+        moveTo(targetPos)
+        return
+    end
+
+    -- tall wall: pathfind around
+    pfActive = true
+    if makePath(targetPos) then
+        pfKey = key
+        pfTime = tick()
+    end
+    local wp = nextWP()
+    if wp then
+        if wp.Action == Enum.PathWaypointAction.Jump then jump() end
+        handleObs()
+        moveTo(wp.Position)
+    else
+        sidestep()
+    end
+end
+
+-- ========== TARGET FINDING ==========
+local function findInRadius(radius)
+    local my = team(LP)
+    local best, bs = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and alive(p) then
+            local t = team(p)
+            local ok = (my == "Monsters" and t == "Humans") or (my == "Humans" and t == "Monsters")
+            if ok and dist3d(LP, p) <= radius then
+                local s = score(p)
+                if s < bs then best, bs = p, s end
+            end
+        end
+    end
+    return best
+end
+
+local function findAny()
+    local my = team(LP)
+    local best, bs = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and alive(p) then
+            local t = team(p)
+            local ok = (my == "Monsters" and t == "Humans") or (my == "Humans" and t == "Monsters")
+            if ok then
+                local s = score(p)
+                if s < bs then best, bs = p, s end
+            end
+        end
+    end
+    return best
+end
+
+local function movingAway(tgt)
+    local a, b = root(LP), root(tgt)
+    if not a or not b then return false end
+    local toUs = (a.Position - b.Position).Unit
+    local vel = getVel(tgt)
+    local hv = Vector3.new(vel.X, 0, vel.Z)
+    if hv.Magnitude < 2 then return false end
+    return (toUs.X * hv.Unit.X + toUs.Z * hv.Unit.Z) < -0.3
+end
+
+-- ========== SPAWN BUTTON (Monsters) ==========
+local function pressSpawnButton()
+    pcall(function()
+        local playerGui = LP:FindFirstChild("PlayerGui")
+        if not playerGui then return end
+
+        local buttons = {}
+        for _, desc in ipairs(playerGui:GetDescendants()) do
+            if desc.Name == "SpawnButtonTemplate" then
+                local btn = desc:FindFirstChild("Button")
+                if btn and btn:IsA("GuiButton") and btn.Visible then
+                    buttons[#buttons + 1] = btn
+                end
+            end
         end
 
-        yK = addInfoLine(
-            "How to join Discord Server?",
-            "Tap That Blue button at Top Right",
-            yK
-        )
-
-        yK = addInfoLine(
-            "How do I join Group?",
-            "Tap The Yellow button then you'll copy group link and paste it to your browser",
-            yK
-        )
-
-        -- key updated info
-        local updLabel = Instance.new("TextLabel")
-        updLabel.Size = UDim2.new(1, -20, 0, 22)
-        updLabel.Position = UDim2.new(0, 10, 0, yK)
-        updLabel.BackgroundColor3 = TXT_BG
-        updLabel.BorderSizePixel = 0
-        updLabel.Text = "Key is Updated Every day"
-        updLabel.Font = Enum.Font.GothamBold
-        updLabel.TextSize = 12
-        updLabel.TextColor3 = TEXT_COL
-        updLabel.TextWrapped = true
-        updLabel.ZIndex = 101
-        updLabel.Parent = keyFrame
-        addPadding(updLabel, 6, 0)
-        yK = yK + 35
-
-        -- key input
-        local inputBg = Instance.new("Frame")
-        inputBg.Size = UDim2.new(1, -20, 0, 36)
-        inputBg.Position = UDim2.new(0, 10, 0, yK)
-        inputBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        inputBg.BorderSizePixel = 0
-        inputBg.ZIndex = 102
-        inputBg.Parent = keyFrame
-
-        local keyInput = Instance.new("TextBox")
-        keyInput.Size = UDim2.new(1, -8, 1, -4)
-        keyInput.Position = UDim2.new(0, 4, 0, 2)
-        keyInput.BackgroundTransparency = 1
-        keyInput.Text = ""
-        keyInput.PlaceholderText = "Enter Key..."
-        keyInput.Font = Enum.Font.Gotham
-        keyInput.TextSize = 14
-        keyInput.TextColor3 = TEXT_COL
-        keyInput.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-        keyInput.ClearTextOnFocus = false
-        keyInput.ZIndex = 103
-        keyInput.Parent = inputBg
-        yK = yK + 42
-
-        -- submit button
-        local submitBtn = Instance.new("TextButton")
-        submitBtn.Size = UDim2.new(1, -20, 0, 36)
-        submitBtn.Position = UDim2.new(0, 10, 0, yK)
-        submitBtn.BackgroundColor3 = BTN_OFF
-        submitBtn.BorderSizePixel = 0
-        submitBtn.AutoButtonColor = false
-        submitBtn.Text = "Submit Key"
-        submitBtn.Font = Enum.Font.GothamBold
-        submitBtn.TextSize = 14
-        submitBtn.TextColor3 = TEXT_COL
-        submitBtn.ZIndex = 102
-        submitBtn.Parent = keyFrame
-
-        submitBtn.MouseEnter:Connect(function() submitBtn.BackgroundColor3 = BTN_ON end)
-        submitBtn.MouseLeave:Connect(function() submitBtn.BackgroundColor3 = BTN_OFF end)
-
-        -- yellow group button
-        local groupBtn = Instance.new("TextButton")
-        groupBtn.Size = UDim2.new(1, -20, 0, 36)
-        groupBtn.Position = UDim2.new(0, 10, 0, yK + 42)
-        groupBtn.BackgroundColor3 = Color3.fromRGB(245, 205, 50)
-        groupBtn.BorderSizePixel = 0
-        groupBtn.AutoButtonColor = false
-        groupBtn.Text = "Copy Group Link"
-        groupBtn.Font = Enum.Font.GothamBold
-        groupBtn.TextSize = 14
-        groupBtn.TextColor3 = Color3.fromRGB(40, 40, 40)
-        groupBtn.ZIndex = 102
-        groupBtn.Parent = keyFrame
-
-        groupBtn.MouseEnter:Connect(function() groupBtn.BackgroundColor3 = Color3.fromRGB(255, 220, 70) end)
-        groupBtn.MouseLeave:Connect(function() groupBtn.BackgroundColor3 = Color3.fromRGB(245, 205, 50) end)
-
-        groupBtn.MouseButton1Click:Connect(function()
+        if #buttons > 0 then
+            local pick = buttons[math.random(1, #buttons)]
+            -- fire all click events
+            for _, conn in ipairs(pick:GetConnections("MouseButton1Click") or {}) do
+                pcall(function() conn:Fire() end)
+            end
+            for _, conn in ipairs(pick:GetConnections("Activated") or {}) do
+                pcall(function() conn:Fire() end)
+            end
+            -- also try firesignal if available
             pcall(function()
-                setclipboard("https://www.roblox.com/communities/644808576/wn-raid-coming-soon#!/about")
-            end)
-            groupBtn.Text = "Copied!"
-            task.delay(1, function()
-                if groupBtn and groupBtn.Parent then
-                    groupBtn.Text = "Copy Group Link"
+                if firesignal then
+                    firesignal(pick.MouseButton1Click)
+                    firesignal(pick.Activated)
                 end
             end)
-        end)
-
-        -- status label
-        local statusLabel = Instance.new("TextLabel")
-        statusLabel.Size = UDim2.new(1, -20, 0, 20)
-        statusLabel.Position = UDim2.new(0, 10, 0, yK + 84)
-        statusLabel.BackgroundTransparency = 1
-        statusLabel.Text = ""
-        statusLabel.Font = Enum.Font.Gotham
-        statusLabel.TextSize = 12
-        statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80)
-        statusLabel.ZIndex = 101
-        statusLabel.Parent = keyFrame
-
-        local GROUP_ID = 644808576
-
-        local function tryUnlock()
-            local entered = keyInput.Text
-            if entered ~= KEY then
-                statusLabel.Text = "Invalid Key"
-                statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80)
-                task.delay(2, function()
-                    if statusLabel and statusLabel.Parent then
-                        statusLabel.Text = ""
-                    end
-                end)
-                return
-            end
-
-            -- check group
-            statusLabel.Text = "Checking group..."
-            statusLabel.TextColor3 = TEXT_COL
-
-            local inGroup = false
-            pcall(function()
-                inGroup = game:GetService("Players").LocalPlayer:IsInGroup(GROUP_ID)
-            end)
-
-            if not inGroup then
-                statusLabel.Text = "You must join the Group first!"
-                statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80)
-                task.delay(3, function()
-                    if statusLabel and statusLabel.Parent then
-                        statusLabel.Text = ""
-                    end
-                end)
-                return
-            end
-
-            getgenv().MiscKeyUnlocked = true
-            keyFrame:Destroy()
-            miscContent:Destroy()
-            MiscModule.CreateUI(parent)
         end
+    end)
+end
 
-        submitBtn.MouseButton1Click:Connect(tryUnlock)
-        keyInput.FocusLost:Connect(function(enterPressed)
-            if enterPressed then tryUnlock() end
-        end)
-
-        miscContent.CanvasSize = UDim2.new(0, 0, 0, yK + 120)
-        return miscContent
-    end
-
-    -- ============================================
-    -- MISC CONTENT (only shown after key unlock)
-    -- ============================================
-
-    local yPos = 10
-
-    -- Section title with white background
-    local function createSectionTitle(text, position)
-        local bg = Instance.new("Frame")
-        bg.Size = UDim2.new(0, 0, 0, 28)
-        bg.AutomaticSize = Enum.AutomaticSize.X
-        bg.Position = UDim2.new(0, 10, 0, position)
-        bg.BackgroundColor3 = TXT_BG
-        bg.BorderSizePixel = 0
-        bg.ZIndex = 66
-        bg.Parent = miscContent
-        addPadding(bg, 6, 0)
-
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0, 0, 1, 0)
-        label.AutomaticSize = Enum.AutomaticSize.X
-        label.BackgroundTransparency = 1
-        label.Text = text
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 15
-        label.TextColor3 = TEXT_COL
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.ZIndex = 67
-        label.Parent = bg
-        return position + 38
-    end
-
-    local function createButton(name, position, callback)
-        local button = Instance.new("TextButton")
-        button.Size = UDim2.new(1, -20, 0, 35)
-        button.Position = UDim2.new(0, 10, 0, position)
-        button.BackgroundColor3 = BTN_OFF
-        button.BorderSizePixel = 0
-        button.AutoButtonColor = false
-        button.Text = name
-        button.Font = Enum.Font.Gotham
-        button.TextSize = 14
-        button.TextColor3 = TEXT_COL
-        button.ZIndex = 68
-        button.Parent = miscContent
-
-        button.MouseEnter:Connect(function() button.BackgroundColor3 = BTN_ON end)
-        button.MouseLeave:Connect(function()
-            -- Only revert if not in "enabled" state
-            if not button:GetAttribute("Active") then
-                button.BackgroundColor3 = BTN_OFF
-            end
-        end)
-
-        button.MouseButton1Click:Connect(function()
-            callback(button)
-        end)
-        return button, position + 45
-    end
-
-    local function createSlider(name, position, minVal, maxVal, currentValue, callback)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -20, 0, 50)
-        container.Position = UDim2.new(0, 10, 0, position)
-        container.BackgroundTransparency = 1
-        container.ZIndex = 65
-        container.Parent = miscContent
-
-        local labelBg = Instance.new("Frame")
-        labelBg.Size = UDim2.new(0, 0, 0, 20)
-        labelBg.Position = UDim2.new(0, 0, 0, 5)
-        labelBg.AutomaticSize = Enum.AutomaticSize.X
-        labelBg.BackgroundColor3 = TXT_BG
-        labelBg.BorderSizePixel = 0
-        labelBg.ZIndex = 66
-        labelBg.Parent = container
-        addPadding(labelBg, 4, 0)
-
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0, 0, 1, 0)
-        label.AutomaticSize = Enum.AutomaticSize.X
-        label.BackgroundTransparency = 1
-        label.Text = name .. ": " .. currentValue
-        label.Font = Enum.Font.Gotham
-        label.TextSize = 12
-        label.TextColor3 = TEXT_COL
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.ZIndex = 67
-        label.Parent = labelBg
-
-        local sliderBg = Instance.new("Frame")
-        sliderBg.Size = UDim2.new(1, -130, 0, 20)
-        sliderBg.Position = UDim2.new(0, 125, 0, 25)
-        sliderBg.BackgroundColor3 = SLIDER_BG
-        sliderBg.BorderSizePixel = 0
-        sliderBg.ZIndex = 68
-        sliderBg.Parent = container
-
-        local sc = Instance.new("UICorner")
-        sc.CornerRadius = UDim.new(0, 4)
-        sc.Parent = sliderBg
-
-        local sliderFill = Instance.new("Frame")
-        sliderFill.Size = UDim2.new((currentValue - minVal) / (maxVal - minVal), 0, 1, 0)
-        sliderFill.BackgroundColor3 = SLIDER_FILL
-        sliderFill.BorderSizePixel = 0
-        sliderFill.ZIndex = 69
-        sliderFill.Parent = sliderBg
-
-        local fc = Instance.new("UICorner")
-        fc.CornerRadius = UDim.new(0, 4)
-        fc.Parent = sliderFill
-
-        local sliderButton = Instance.new("TextButton")
-        sliderButton.Size = UDim2.new(1, 0, 1, 0)
-        sliderButton.BackgroundTransparency = 1
-        sliderButton.Text = ""
-        sliderButton.ZIndex = 70
-        sliderButton.Parent = sliderBg
-
-        local dragging = false
-        sliderButton.MouseButton1Down:Connect(function() dragging = true end)
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-        end)
-        RunService.RenderStepped:Connect(function()
-            if dragging then
-                local mousePos = UserInputService:GetMouseLocation()
-                local relativeX = math.clamp(mousePos.X - sliderBg.AbsolutePosition.X, 0, sliderBg.AbsoluteSize.X)
-                local percentage = relativeX / sliderBg.AbsoluteSize.X
-                local value = minVal + (maxVal - minVal) * percentage
-                if maxVal - minVal <= 10 then
-                    value = math.floor(value * 10) / 10
-                else
-                    value = math.floor(value)
-                end
-                sliderFill.Size = UDim2.new((value - minVal) / (maxVal - minVal), 0, 1, 0)
-                label.Text = name .. ": " .. value
-                if callback then callback(value) end
-            end
-        end)
-        return position + 60
-    end
-
-    local function createCheckbox(name, settingsTable, settingKey, position)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -20, 0, 30)
-        container.Position = UDim2.new(0, 10, 0, position)
-        container.BackgroundTransparency = 1
-        container.ZIndex = 65
-        container.Parent = miscContent
-
-        local checkbox = Instance.new("TextButton")
-        checkbox.Size = UDim2.new(0, 20, 0, 20)
-        checkbox.Position = UDim2.new(0, 0, 0, 5)
-        checkbox.BackgroundColor3 = CHECK_OFF
-        checkbox.BackgroundTransparency = 0
-        checkbox.BorderSizePixel = 0
-        checkbox.Text = ""
-        checkbox.AutoButtonColor = false
-        checkbox.ZIndex = 68
-        checkbox.Parent = container
-
-        local checkmark = Instance.new("TextLabel")
-        checkmark.Size = UDim2.new(1, 0, 1, 0)
-        checkmark.BackgroundTransparency = 1
-        checkmark.Text = settingsTable[settingKey] and "✓" or ""
-        checkmark.Font = Enum.Font.GothamBold
-        checkmark.TextSize = 16
-        checkmark.TextColor3 = TEXT_COL
-        checkmark.ZIndex = 69
-        checkmark.Parent = checkbox
-
-        if settingsTable[settingKey] then
-            checkbox.BackgroundColor3 = CHECK_ON
+-- ========== MONSTERS FRAME ==========
+local function monsterFrame(dt)
+    local target = findAny()
+    if not target then
+        stopMov()
+        clearPF()
+        -- still press spawn button when dead/no target
+        local now = tick()
+        if now - lastSpawnPress >= 1 then
+            pressSpawnButton()
+            lastSpawnPress = now
         end
+        return
+    end
 
-        local labelBg = Instance.new("Frame")
-        labelBg.Size = UDim2.new(0, 0, 0, 30)
-        labelBg.Position = UDim2.new(0, 30, 0, 0)
-        labelBg.AutomaticSize = Enum.AutomaticSize.X
-        labelBg.BackgroundColor3 = TXT_BG
-        labelBg.BorderSizePixel = 0
-        labelBg.ZIndex = 66
-        labelBg.Parent = container
-        addPadding(labelBg, 6, 0)
+    local d = dist3d(LP, target)
+    local now = tick()
+    local h = hum(LP)
 
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0, 0, 1, 0)
-        label.AutomaticSize = Enum.AutomaticSize.X
-        label.BackgroundTransparency = 1
-        label.Text = name
-        label.Font = Enum.Font.Gotham
-        label.TextSize = 14
-        label.TextColor3 = TEXT_COL
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.ZIndex = 67
-        label.Parent = labelBg
+    -- press spawn button every 1 second
+    if now - lastSpawnPress >= 1 then
+        pressSpawnButton()
+        lastSpawnPress = now
+    end
 
-        checkbox.MouseButton1Click:Connect(function()
-            settingsTable[settingKey] = not settingsTable[settingKey]
-            if settingsTable[settingKey] then
-                checkbox.BackgroundColor3 = CHECK_ON
-                checkmark.Text = "✓"
+    -- track damage: if health dropped, reset no-damage timer
+    if h then
+        local hp = h.Health
+        if monsterLastHP and hp < monsterLastHP then
+            monsterNoDmgStart = now
+        end
+        monsterLastHP = hp
+    end
+
+    -- alive without taking damage for 20s: click
+    if monsterNoDmgStart and (now - monsterNoDmgStart >= MONSTER_NODMG_TIME) then
+        click()
+        monsterNoDmgStart = now
+    end
+
+    -- within 30 studs of human: auto click
+    if d <= MONSTER_CLICK_RANGE then
+        face(target)
+        click()
+    end
+
+    -- idle 5s (XZ only): click
+    if checkIdle(dt) then
+        click()
+    end
+
+    tryJump()
+
+    local tpos = predict(target) or (root(target) and root(target).Position)
+    if tpos then
+        goTo(tpos, target)
+    end
+end
+
+-- ========== HUMANS FRAME ==========
+local function humanFrame(dt)
+    local s = S()
+    local detectRadius = s.DetectRadius or HUMAN_DETECT_RANGE
+    local now = tick()
+
+    local target = nil
+
+    -- target memory
+    if s.TargetMemory and memoryTarget then
+        if alive(memoryTarget) and isMonster(memoryTarget) then
+            if dist3d(LP, memoryTarget) <= detectRadius * 3 then
+                target = memoryTarget
             else
-                checkbox.BackgroundColor3 = CHECK_OFF
-                checkmark.Text = ""
+                memoryTarget = nil
             end
-        end)
-        return position + 40
+        else
+            memoryTarget = nil
+        end
     end
 
-    -- Helper to set button active state
-    local function setActive(btn, active)
-        btn:SetAttribute("Active", active)
-        btn.BackgroundColor3 = active and BTN_ON or BTN_OFF
+    if not target then
+        target = findInRadius(detectRadius)
     end
 
-    -- PART CONTROLLER Section
-    yPos = createSectionTitle("PART CONTROLLER", yPos)
-
-    local moveToolBtn, rotateToolBtn, ringBtn, spinBtn, safeNosBtn
-
-    moveToolBtn, yPos = createButton("Move Tool", yPos, function(button)
-        local moveTool = loadTool("MoveTool", ToolURLs.MoveTool)
-        if not moveTool then return end
-        if moveTool.IsEnabled() then
-            moveTool.Disable()
-            setActive(button, false)
-        else
-            if LoadedTools.RotateTool and LoadedTools.RotateTool.IsEnabled() then
-                LoadedTools.RotateTool.Disable()
-                if rotateToolBtn then setActive(rotateToolBtn, false) end
-            end
-            moveTool.Enable()
-            setActive(button, true)
-        end
-    end)
-
-    rotateToolBtn, yPos = createButton("Rotate Tool", yPos, function(button)
-        local rotateTool = loadTool("RotateTool", ToolURLs.RotateTool)
-        if not rotateTool then return end
-        if rotateTool.IsEnabled() then
-            rotateTool.Disable()
-            setActive(button, false)
-        else
-            if LoadedTools.MoveTool and LoadedTools.MoveTool.IsEnabled() then
-                LoadedTools.MoveTool.Disable()
-                if moveToolBtn then setActive(moveToolBtn, false) end
-            end
-            rotateTool.Enable()
-            setActive(button, true)
-        end
-    end)
-
-    local resetBtn
-    resetBtn, yPos = createButton("Reset Rotation", yPos, function()
-        local selectedConnectedParts = {}
-        if LoadedTools.MoveTool and LoadedTools.MoveTool.GetSelectedConnectedParts then
-            selectedConnectedParts = LoadedTools.MoveTool.GetSelectedConnectedParts()
-        elseif LoadedTools.RotateTool and LoadedTools.RotateTool.GetSelectedConnectedParts then
-            selectedConnectedParts = LoadedTools.RotateTool.GetSelectedConnectedParts()
-        end
-        if #selectedConnectedParts > 0 then
-            for _, connectedPart in ipairs(selectedConnectedParts) do
-                if connectedPart and connectedPart.Parent then
-                    local bg = connectedPart:FindFirstChild("MoveToolGyro")
-                    if bg and bg:IsA("BodyGyro") then
-                        bg.CFrame = CFrame.new(connectedPart.Position)
-                    end
-                end
-            end
-            print("Rotation reset")
-        else
-            warn("No part selected")
-        end
-    end)
-
-    local clearBtn
-    clearBtn, yPos = createButton("Clear All Forces", yPos, function()
-        for _, part in ipairs(game.Workspace:GetDescendants()) do
-            if part:IsA("BasePart") then
-                for _, child in ipairs(part:GetChildren()) do
-                    if child.Name == "MoveToolPosition" or child.Name == "MoveToolGyro" or
-                       child.Name == "RingPosition" or child.Name == "RingGyro" or
-                       child.Name == "SpinVelocity" then
-                        child:Destroy()
-                    end
-                end
-            end
-        end
-        if LoadedTools.MoveTool then LoadedTools.MoveTool.Disable() end
-        if LoadedTools.RotateTool then LoadedTools.RotateTool.Disable() end
-        if LoadedTools.RingShape then LoadedTools.RingShape.Disable() end
-        if LoadedTools.RPMTool then LoadedTools.RPMTool.Disable() end
-        setActive(moveToolBtn, false)
-        setActive(rotateToolBtn, false)
-        if ringBtn then setActive(ringBtn, false) end
-        if spinBtn then setActive(spinBtn, false) end
-        print("All forces cleared")
-    end)
-
-    yPos = yPos + 10
-
-    -- RING FORMATION Section
-    yPos = createSectionTitle("RING FORMATION", yPos)
-
-    ringBtn, yPos = createButton("Ring Shape", yPos, function(button)
-        local ringShape = loadTool("RingShape", ToolURLs.RingShape)
-        if not ringShape then return end
-        if ringShape.IsEnabled() then
-            ringShape.Disable()
-            setActive(button, false)
-        else
-            ringShape.Enable()
-            setActive(button, true)
-        end
-    end)
-
-    yPos = createSlider("Ring Radius", yPos, 5, 50, 10, function(value)
-        if LoadedTools.RingShape then LoadedTools.RingShape.SetRadius(value) end
-    end)
-
-    yPos = createSlider("Ring Height", yPos, -10, 20, 3, function(value)
-        if LoadedTools.RingShape then LoadedTools.RingShape.SetHeight(value) end
-    end)
-
-    yPos = createSlider("Ring Rotation", yPos, 0, 360, 0, function(value)
-        if LoadedTools.RingShape then LoadedTools.RingShape.SetRotation(value) end
-    end)
-
-    yPos = yPos + 10
-
-    -- SPIN PARTS Section
-    yPos = createSectionTitle("SPIN PARTS", yPos)
-
-    spinBtn, yPos = createButton("Spin Parts", yPos, function(button)
-        local rpmTool = loadTool("RPMTool", ToolURLs.RPMTool)
-        if not rpmTool then return end
-        if rpmTool.IsEnabled() then
-            rpmTool.Disable()
-            setActive(button, false)
-        else
-            rpmTool.SetGetSelectedPartsFunction(function()
-                if LoadedTools.MoveTool and LoadedTools.MoveTool.GetSelectedConnectedParts then
-                    local parts = LoadedTools.MoveTool.GetSelectedConnectedParts()
-                    if #parts > 0 then return parts end
-                end
-                if LoadedTools.RotateTool and LoadedTools.RotateTool.GetSelectedConnectedParts then
-                    local parts = LoadedTools.RotateTool.GetSelectedConnectedParts()
-                    if #parts > 0 then return parts end
-                end
-                return {}
-            end)
-            local success = rpmTool.Enable()
-            setActive(button, success)
-        end
-    end)
-
-    yPos = createSlider("Spin RPM", yPos, 1, 3000, 10, function(value)
-        if LoadedTools.RPMTool then LoadedTools.RPMTool.SetRPM(value) end
-    end)
-
-    -- Spin Axis Selector
-    local axisLabelBg = Instance.new("Frame")
-    axisLabelBg.Size = UDim2.new(0, 0, 0, 25)
-    axisLabelBg.AutomaticSize = Enum.AutomaticSize.X
-    axisLabelBg.Position = UDim2.new(0, 10, 0, yPos)
-    axisLabelBg.BackgroundColor3 = TXT_BG
-    axisLabelBg.BorderSizePixel = 0
-    axisLabelBg.ZIndex = 66
-    axisLabelBg.Parent = miscContent
-    addPadding(axisLabelBg, 6, 0)
-
-    local axisLabel = Instance.new("TextLabel")
-    axisLabel.Size = UDim2.new(0, 0, 1, 0)
-    axisLabel.AutomaticSize = Enum.AutomaticSize.X
-    axisLabel.BackgroundTransparency = 1
-    axisLabel.Text = "Spin Axis:"
-    axisLabel.Font = Enum.Font.Gotham
-    axisLabel.TextSize = 12
-    axisLabel.TextColor3 = TEXT_COL
-    axisLabel.TextXAlignment = Enum.TextXAlignment.Left
-    axisLabel.ZIndex = 67
-    axisLabel.Parent = axisLabelBg
-    yPos = yPos + 30
-
-    local verticalBtn = Instance.new("TextButton")
-    verticalBtn.Size = UDim2.new(0, 135, 0, 30)
-    verticalBtn.Position = UDim2.new(0, 10, 0, yPos)
-    verticalBtn.BackgroundColor3 = BTN_ON
-    verticalBtn.BorderSizePixel = 0
-    verticalBtn.Text = "Vertical"
-    verticalBtn.Font = Enum.Font.Gotham
-    verticalBtn.TextSize = 12
-    verticalBtn.TextColor3 = TEXT_COL
-    verticalBtn.AutoButtonColor = false
-    verticalBtn.ZIndex = 68
-    verticalBtn.Parent = miscContent
-
-    local horizontalBtn = Instance.new("TextButton")
-    horizontalBtn.Size = UDim2.new(0, 135, 0, 30)
-    horizontalBtn.Position = UDim2.new(0, 155, 0, yPos)
-    horizontalBtn.BackgroundColor3 = BTN_OFF
-    horizontalBtn.BorderSizePixel = 0
-    horizontalBtn.Text = "Horizontal"
-    horizontalBtn.Font = Enum.Font.Gotham
-    horizontalBtn.TextSize = 12
-    horizontalBtn.TextColor3 = TEXT_COL
-    horizontalBtn.AutoButtonColor = false
-    horizontalBtn.ZIndex = 68
-    horizontalBtn.Parent = miscContent
-
-    verticalBtn.MouseButton1Click:Connect(function()
-        if LoadedTools.RPMTool then LoadedTools.RPMTool.SetAxis("Vertical") end
-        verticalBtn.BackgroundColor3 = BTN_ON
-        horizontalBtn.BackgroundColor3 = BTN_OFF
-    end)
-
-    horizontalBtn.MouseButton1Click:Connect(function()
-        if LoadedTools.RPMTool then LoadedTools.RPMTool.SetAxis("Horizontal") end
-        horizontalBtn.BackgroundColor3 = BTN_ON
-        verticalBtn.BackgroundColor3 = BTN_OFF
-    end)
-
-    yPos = yPos + 45
-
-    -- SAFE-NOS Section
-    yPos = createSectionTitle("SAFE-NOS", yPos)
-
-    safeNosBtn, yPos = createButton("Safe-NOS", yPos, function(button)
-        if getgenv().SafeNOSEnabled then
-            getgenv().SafeNOSEnabled = false
-            setActive(button, false)
-            button.Text = "Safe-NOS"
-            if getgenv().SafeNOSConnection then
-                getgenv().SafeNOSConnection:Disconnect()
-                getgenv().SafeNOSConnection = nil
+    -- no target in radius
+    if not target then
+        local wp = s.Waypoint
+        if wp then
+            local d = distPos(LP, wp)
+            if d > 3 then
+                tryJump()
+                goTo(wp, "waypoint")
+            else
+                stopMov()
+                clearPF()
             end
         else
-            getgenv().SafeNOSEnabled = true
-            setActive(button, true)
-            button.Text = "Safe-NOS (ON)"
-            local Players = game:GetService("Players")
-            local LocalPlayer = Players.LocalPlayer
-            getgenv().SafeNOSConnection = RunService.Heartbeat:Connect(function()
-                if not getgenv().SafeNOSEnabled then return end
-                for _, part in ipairs(workspace:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        for _, child in ipairs(part:GetChildren()) do
-                            if child.Name == "MoveToolPosition" or child.Name == "MoveToolGyro" or
-                               child.Name == "RingPosition" or child.Name == "RingGyro" or
-                               child.Name == "SpinVelocity" then
-                                local hasOwnership = part:CanSetNetworkOwnership()
-                                if hasOwnership then
-                                    local owner = part:GetNetworkOwner()
-                                    if owner ~= LocalPlayer then
-                                        child:Destroy()
-                                        print("Safe-NOS: Cleared force from " .. part.Name .. " (lost ownership)")
-                                    end
-                                end
-                                break
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end)
-
-    local safeInfoBg = Instance.new("Frame")
-    safeInfoBg.Size = UDim2.new(1, -20, 0, 40)
-    safeInfoBg.Position = UDim2.new(0, 10, 0, yPos)
-    safeInfoBg.BackgroundColor3 = TXT_BG
-    safeInfoBg.BorderSizePixel = 0
-    safeInfoBg.ZIndex = 66
-    safeInfoBg.Parent = miscContent
-
-    local safeNosInfo = Instance.new("TextLabel")
-    safeNosInfo.Size = UDim2.new(1, -8, 1, 0)
-    safeNosInfo.Position = UDim2.new(0, 4, 0, 0)
-    safeNosInfo.BackgroundTransparency = 1
-    safeNosInfo.Text = "Automatically removes forces when\nyou lose network ownership"
-    safeNosInfo.Font = Enum.Font.Gotham
-    safeNosInfo.TextSize = 11
-    safeNosInfo.TextColor3 = TEXT_COL
-    safeNosInfo.TextXAlignment = Enum.TextXAlignment.Left
-    safeNosInfo.TextYAlignment = Enum.TextYAlignment.Top
-    safeNosInfo.TextWrapped = true
-    safeNosInfo.ZIndex = 67
-    safeNosInfo.Parent = safeInfoBg
-    yPos = yPos + 50
-
-    -- DISABLE AAS Section
-    yPos = createSectionTitle("DISABLE AAS", yPos)
-
-    local disableAASBtn
-    disableAASBtn, yPos = createButton("Disable AAS", yPos, function(button)
-        if getgenv().DisableAASEnabled then
-            getgenv().DisableAASEnabled = false
-            setActive(button, false)
-            button.Text = "Disable AAS"
-            if getgenv().DisableAASConnection then
-                pcall(function() task.cancel(getgenv().DisableAASConnection) end)
-                getgenv().DisableAASConnection = nil
-            end
-        else
-            getgenv().DisableAASEnabled = true
-            setActive(button, true)
-            button.Text = "Disable AAS (ON)"
-            local Players = game:GetService("Players")
-            local LocalPlayer = Players.LocalPlayer
-            getgenv().DisableAASConnection = task.spawn(function()
-                while getgenv().DisableAASEnabled do
-                    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                        local hrp = LocalPlayer.Character.HumanoidRootPart
-                        hrp.CFrame = hrp.CFrame + Vector3.new(0, 3, 0)
-                        if getgenv().FlipPlayerEnabled then
-                            hrp.CFrame = hrp.CFrame * CFrame.Angles(math.pi, 0, 0)
-                        end
-                    end
-                    task.wait(0.5)
-                end
-            end)
-        end
-    end)
-
-    -- Flip Player Checkbox
-    local flipContainer = Instance.new("Frame")
-    flipContainer.Size = UDim2.new(1, -20, 0, 30)
-    flipContainer.Position = UDim2.new(0, 10, 0, yPos)
-    flipContainer.BackgroundTransparency = 1
-    flipContainer.ZIndex = 65
-    flipContainer.Parent = miscContent
-
-    local flipCheckbox = Instance.new("TextButton")
-    flipCheckbox.Size = UDim2.new(0, 25, 0, 25)
-    flipCheckbox.Position = UDim2.new(0, 0, 0, 0)
-    flipCheckbox.BackgroundColor3 = CHECK_OFF
-    flipCheckbox.BorderSizePixel = 0
-    flipCheckbox.Text = ""
-    flipCheckbox.AutoButtonColor = false
-    flipCheckbox.ZIndex = 68
-    flipCheckbox.Parent = flipContainer
-
-
-    local checkmark = Instance.new("TextLabel")
-    checkmark.Size = UDim2.new(1, 0, 1, 0)
-    checkmark.BackgroundTransparency = 1
-    checkmark.Text = ""
-    checkmark.Font = Enum.Font.GothamBold
-    checkmark.TextSize = 18
-    checkmark.TextColor3 = TEXT_COL
-    checkmark.ZIndex = 69
-    checkmark.Parent = flipCheckbox
-
-    local flipLabelBg = Instance.new("Frame")
-    flipLabelBg.Size = UDim2.new(0, 0, 1, 0)
-    flipLabelBg.AutomaticSize = Enum.AutomaticSize.X
-    flipLabelBg.Position = UDim2.new(0, 35, 0, 0)
-    flipLabelBg.BackgroundColor3 = TXT_BG
-    flipLabelBg.BorderSizePixel = 0
-    flipLabelBg.ZIndex = 66
-    flipLabelBg.Parent = flipContainer
-    addPadding(flipLabelBg, 6, 0)
-
-    local flipLabel = Instance.new("TextLabel")
-    flipLabel.Size = UDim2.new(0, 0, 1, 0)
-    flipLabel.AutomaticSize = Enum.AutomaticSize.X
-    flipLabel.BackgroundTransparency = 1
-    flipLabel.Text = "Flip Player"
-    flipLabel.Font = Enum.Font.Gotham
-    flipLabel.TextSize = 12
-    flipLabel.TextColor3 = TEXT_COL
-    flipLabel.TextXAlignment = Enum.TextXAlignment.Left
-    flipLabel.ZIndex = 67
-    flipLabel.Parent = flipLabelBg
-
-    getgenv().FlipPlayerEnabled = false
-
-    flipCheckbox.MouseButton1Click:Connect(function()
-        getgenv().FlipPlayerEnabled = not getgenv().FlipPlayerEnabled
-        if getgenv().FlipPlayerEnabled then
-            flipCheckbox.BackgroundColor3 = CHECK_ON
-            checkmark.Text = "✓"
-        else
-            flipCheckbox.BackgroundColor3 = CHECK_OFF
-            checkmark.Text = ""
-        end
-    end)
-
-    yPos = yPos + 40
-
-    local aasInfoBg = Instance.new("Frame")
-    aasInfoBg.Size = UDim2.new(1, -20, 0, 40)
-    aasInfoBg.Position = UDim2.new(0, 10, 0, yPos)
-    aasInfoBg.BackgroundColor3 = TXT_BG
-    aasInfoBg.BorderSizePixel = 0
-    aasInfoBg.ZIndex = 66
-    aasInfoBg.Parent = miscContent
-
-    local aasInfo = Instance.new("TextLabel")
-    aasInfo.Size = UDim2.new(1, -8, 1, 0)
-    aasInfo.Position = UDim2.new(0, 4, 0, 0)
-    aasInfo.BackgroundTransparency = 1
-    aasInfo.Text = "Moves you up by 3 studs every 0.5s\nOptionally flips character upside down"
-    aasInfo.Font = Enum.Font.Gotham
-    aasInfo.TextSize = 11
-    aasInfo.TextColor3 = TEXT_COL
-    aasInfo.TextXAlignment = Enum.TextXAlignment.Left
-    aasInfo.TextYAlignment = Enum.TextYAlignment.Top
-    aasInfo.TextWrapped = true
-    aasInfo.ZIndex = 67
-    aasInfo.Parent = aasInfoBg
-    yPos = yPos + 50
-
-    -- ============================================
-    -- AUTO FARM
-    -- ============================================
-    yPos = yPos + 10
-    yPos = createSectionTitle("AUTO FARM", yPos)
-
-    getgenv().AutoFarmSettings = getgenv().AutoFarmSettings or {
-        Enabled = false,
-        AntiBack = false,
-        TargetMemory = false,
-        ShowCircle = false,
-        DetectRadius = 30,
-        Waypoint = nil
-    }
-
-    -- AutoFarm toggle
-    local autoFarmActive = false
-    local autoFarmBtn = Instance.new("TextButton")
-    autoFarmBtn.Size = UDim2.new(1, -20, 0, 40)
-    autoFarmBtn.Position = UDim2.new(0, 10, 0, yPos)
-    autoFarmBtn.BackgroundColor3 = BTN_OFF
-    autoFarmBtn.BorderSizePixel = 0
-    autoFarmBtn.AutoButtonColor = false
-    autoFarmBtn.Text = "AutoFarm: OFF"
-    autoFarmBtn.Font = Enum.Font.GothamBold
-    autoFarmBtn.TextSize = 14
-    autoFarmBtn.TextColor3 = TEXT_COL
-    autoFarmBtn.ZIndex = 68
-    autoFarmBtn.Parent = miscContent
-
-    autoFarmBtn.MouseEnter:Connect(function()
-        if not autoFarmActive then autoFarmBtn.BackgroundColor3 = BTN_ON end
-    end)
-    autoFarmBtn.MouseLeave:Connect(function()
-        if not autoFarmActive then autoFarmBtn.BackgroundColor3 = BTN_OFF end
-    end)
-
-    autoFarmBtn.MouseButton1Click:Connect(function()
-        autoFarmActive = not autoFarmActive
-
-        if autoFarmActive then
-            autoFarmBtn.Text = "Loading..."
-            autoFarmBtn.BackgroundColor3 = BTN_ON
-
-            if not LoadedTools.AutoFarm then
-                local tool = loadTool("AutoFarm", ToolURLs.AutoFarm)
-                if not tool and not getgenv().AutoFarmControl then
-                    warn("Failed to load AutoFarm script")
-                    autoFarmActive = false
-                    autoFarmBtn.Text = "AutoFarm: FAILED"
-                    task.wait(1)
-                    autoFarmBtn.Text = "AutoFarm: OFF"
-                    autoFarmBtn.BackgroundColor3 = BTN_OFF
-                    return
-                end
-            end
-
-            if getgenv().AutoFarmControl then
-                getgenv().AutoFarmControl.Start()
-            end
-            getgenv().AutoFarmSettings.Enabled = true
-            autoFarmBtn.Text = "AutoFarm: ON"
-            autoFarmBtn.BackgroundColor3 = BTN_ON
-        else
-            if getgenv().AutoFarmControl then
-                getgenv().AutoFarmControl.Stop()
-            end
-            getgenv().AutoFarmSettings.Enabled = false
-            autoFarmBtn.Text = "AutoFarm: OFF"
-            autoFarmBtn.BackgroundColor3 = BTN_OFF
-        end
-    end)
-    yPos = yPos + 45
-
-    -- Anti Back checkbox
-    yPos = createCheckbox("Anti Back", getgenv().AutoFarmSettings, "AntiBack", yPos)
-
-    -- Target Memory checkbox
-    yPos = createCheckbox("Target Memory", getgenv().AutoFarmSettings, "TargetMemory", yPos)
-
-    -- Show Circle checkbox
-    yPos = createCheckbox("Show Circle", getgenv().AutoFarmSettings, "ShowCircle", yPos)
-
-    -- Detection Radius slider
-    yPos = createSlider("Detect Radius", yPos, 10, 100, getgenv().AutoFarmSettings.DetectRadius or 30, function(val)
-        getgenv().AutoFarmSettings.DetectRadius = val
-    end)
-
-    -- Set Waypoint button
-    local setWpBtn = Instance.new("TextButton")
-    setWpBtn.Size = UDim2.new(0.5, -15, 0, 32)
-    setWpBtn.Position = UDim2.new(0, 10, 0, yPos)
-    setWpBtn.BackgroundColor3 = BTN_OFF
-    setWpBtn.BorderSizePixel = 0
-    setWpBtn.AutoButtonColor = false
-    setWpBtn.Text = "Set Waypoint"
-    setWpBtn.Font = Enum.Font.GothamBold
-    setWpBtn.TextSize = 12
-    setWpBtn.TextColor3 = TEXT_COL
-    setWpBtn.ZIndex = 68
-    setWpBtn.Parent = miscContent
-
-    setWpBtn.MouseEnter:Connect(function() setWpBtn.BackgroundColor3 = BTN_ON end)
-    setWpBtn.MouseLeave:Connect(function() setWpBtn.BackgroundColor3 = BTN_OFF end)
-
-    setWpBtn.MouseButton1Click:Connect(function()
-        if getgenv().AutoFarmControl and getgenv().AutoFarmControl.SetWaypoint then
-            getgenv().AutoFarmControl.SetWaypoint()
-        else
-            local r = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if r then
-                getgenv().AutoFarmSettings.Waypoint = r.Position
+            target = findAny()
+            if not target then
+                stopMov()
+                clearPF()
+                if checkIdle(dt) then click() end
+                return
             end
         end
-        setWpBtn.Text = "Waypoint Set!"
-        setWpBtn.BackgroundColor3 = BTN_ON
-        task.wait(0.5)
-        setWpBtn.Text = "Set Waypoint"
-        setWpBtn.BackgroundColor3 = BTN_OFF
-    end)
-
-    -- Remove Waypoint button
-    local rmWpBtn = Instance.new("TextButton")
-    rmWpBtn.Size = UDim2.new(0.5, -15, 0, 32)
-    rmWpBtn.Position = UDim2.new(0.5, 5, 0, yPos)
-    rmWpBtn.BackgroundColor3 = BTN_OFF
-    rmWpBtn.BorderSizePixel = 0
-    rmWpBtn.AutoButtonColor = false
-    rmWpBtn.Text = "Remove Waypoint"
-    rmWpBtn.Font = Enum.Font.GothamBold
-    rmWpBtn.TextSize = 12
-    rmWpBtn.TextColor3 = TEXT_COL
-    rmWpBtn.ZIndex = 68
-    rmWpBtn.Parent = miscContent
-
-    rmWpBtn.MouseEnter:Connect(function() rmWpBtn.BackgroundColor3 = BTN_ON end)
-    rmWpBtn.MouseLeave:Connect(function() rmWpBtn.BackgroundColor3 = BTN_OFF end)
-
-    rmWpBtn.MouseButton1Click:Connect(function()
-        if getgenv().AutoFarmControl and getgenv().AutoFarmControl.RemoveWaypoint then
-            getgenv().AutoFarmControl.RemoveWaypoint()
-        else
-            getgenv().AutoFarmSettings.Waypoint = nil
-        end
-        rmWpBtn.Text = "Removed!"
-        rmWpBtn.BackgroundColor3 = BTN_ON
-        task.wait(0.5)
-        rmWpBtn.Text = "Remove Waypoint"
-        rmWpBtn.BackgroundColor3 = BTN_OFF
-    end)
-    yPos = yPos + 40
-
-    -- Info
-    local farmInfoBg = Instance.new("Frame")
-    farmInfoBg.Size = UDim2.new(1, -20, 0, 65)
-    farmInfoBg.Position = UDim2.new(0, 10, 0, yPos)
-    farmInfoBg.BackgroundColor3 = TXT_BG
-    farmInfoBg.BorderSizePixel = 0
-    farmInfoBg.ZIndex = 66
-    farmInfoBg.Parent = miscContent
-
-    local farmInfo = Instance.new("TextLabel")
-    farmInfo.Size = UDim2.new(1, -8, 1, 0)
-    farmInfo.Position = UDim2.new(0, 4, 0, 0)
-    farmInfo.BackgroundTransparency = 1
-    farmInfo.Text = "Monsters: Follow humans, click after idle 5s.\nHumans: Detect & follow monsters, 30cps.\nAnti Back: retreat when monster retreats.\nTarget Memory: lock onto first target.\nWaypoint: return home when no enemies."
-    farmInfo.Font = Enum.Font.Gotham
-    farmInfo.TextSize = 10
-    farmInfo.TextColor3 = TEXT_COL
-    farmInfo.TextXAlignment = Enum.TextXAlignment.Left
-    farmInfo.TextYAlignment = Enum.TextYAlignment.Top
-    farmInfo.TextWrapped = true
-    farmInfo.ZIndex = 67
-    farmInfo.Parent = farmInfoBg
-    yPos = yPos + 70
-
-    -- ============================================
-    -- RAGDOLL CONTROL
-    -- ============================================
-    yPos = yPos + 10
-    yPos = createSectionTitle("RAGDOLL CONTROL", yPos)
-
-    -- Force Ragdoll button
-    local ragdollBtn = Instance.new("TextButton")
-    ragdollBtn.Size = UDim2.new(1, -20, 0, 35)
-    ragdollBtn.Position = UDim2.new(0, 10, 0, yPos)
-    ragdollBtn.BackgroundColor3 = BTN_OFF
-    ragdollBtn.BorderSizePixel = 0
-    ragdollBtn.AutoButtonColor = false
-    ragdollBtn.Text = "Force Ragdoll"
-    ragdollBtn.Font = Enum.Font.Gotham
-    ragdollBtn.TextSize = 14
-    ragdollBtn.TextColor3 = TEXT_COL
-    ragdollBtn.ZIndex = 68
-    ragdollBtn.Parent = miscContent
-
-    ragdollBtn.MouseEnter:Connect(function() ragdollBtn.BackgroundColor3 = BTN_ON end)
-    ragdollBtn.MouseLeave:Connect(function() ragdollBtn.BackgroundColor3 = BTN_OFF end)
-
-    ragdollBtn.MouseButton1Click:Connect(function()
-        local LP = game:GetService("Players").LocalPlayer
-        local char = LP.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not root then return end
-
-        -- strip velocity first
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-
-        -- disable motors to ragdoll
-        for _, v in ipairs(char:GetDescendants()) do
-            if v:IsA("Motor6D") and v.Name ~= "Neck" then
-                v.Enabled = false
-            end
-        end
-
-        hum:ChangeState(Enum.HumanoidStateType.Physics)
-        ragdollBtn.Text = "Ragdolled!"
-        ragdollBtn.BackgroundColor3 = BTN_ON
-        task.wait(0.5)
-        ragdollBtn.Text = "Force Ragdoll"
-        ragdollBtn.BackgroundColor3 = BTN_OFF
-    end)
-    yPos = yPos + 42
-
-    -- Recover button
-    local recoverBtn = Instance.new("TextButton")
-    recoverBtn.Size = UDim2.new(1, -20, 0, 35)
-    recoverBtn.Position = UDim2.new(0, 10, 0, yPos)
-    recoverBtn.BackgroundColor3 = BTN_OFF
-    recoverBtn.BorderSizePixel = 0
-    recoverBtn.AutoButtonColor = false
-    recoverBtn.Text = "Recover (Get Up)"
-    recoverBtn.Font = Enum.Font.Gotham
-    recoverBtn.TextSize = 14
-    recoverBtn.TextColor3 = TEXT_COL
-    recoverBtn.ZIndex = 68
-    recoverBtn.Parent = miscContent
-
-    recoverBtn.MouseEnter:Connect(function() recoverBtn.BackgroundColor3 = BTN_ON end)
-    recoverBtn.MouseLeave:Connect(function() recoverBtn.BackgroundColor3 = BTN_OFF end)
-
-    recoverBtn.MouseButton1Click:Connect(function()
-        local LP = game:GetService("Players").LocalPlayer
-        local char = LP.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum then return end
-
-        -- re-enable motors
-        for _, v in ipairs(char:GetDescendants()) do
-            if v:IsA("Motor6D") then
-                v.Enabled = true
-            end
-        end
-
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        recoverBtn.Text = "Recovered!"
-        recoverBtn.BackgroundColor3 = BTN_ON
-        task.wait(0.5)
-        recoverBtn.Text = "Recover (Get Up)"
-        recoverBtn.BackgroundColor3 = BTN_OFF
-    end)
-    yPos = yPos + 42
-
-    -- Anti-Ragdoll toggle
-    local antiRagdollActive = false
-    local antiRagdollConn = nil
-
-    local antiRagBtn = Instance.new("TextButton")
-    antiRagBtn.Size = UDim2.new(1, -20, 0, 35)
-    antiRagBtn.Position = UDim2.new(0, 10, 0, yPos)
-    antiRagBtn.BackgroundColor3 = BTN_OFF
-    antiRagBtn.BorderSizePixel = 0
-    antiRagBtn.AutoButtonColor = false
-    antiRagBtn.Text = "Anti-Ragdoll: OFF"
-    antiRagBtn.Font = Enum.Font.Gotham
-    antiRagBtn.TextSize = 14
-    antiRagBtn.TextColor3 = TEXT_COL
-    antiRagBtn.ZIndex = 68
-    antiRagBtn.Parent = miscContent
-
-    antiRagBtn.MouseEnter:Connect(function()
-        if not antiRagdollActive then antiRagBtn.BackgroundColor3 = BTN_ON end
-    end)
-    antiRagBtn.MouseLeave:Connect(function()
-        if not antiRagdollActive then antiRagBtn.BackgroundColor3 = BTN_OFF end
-    end)
-
-    antiRagBtn.MouseButton1Click:Connect(function()
-        antiRagdollActive = not antiRagdollActive
-
-        if antiRagdollActive then
-            antiRagBtn.Text = "Anti-Ragdoll: ON"
-            antiRagBtn.BackgroundColor3 = BTN_ON
-
-            antiRagdollConn = RunService.Heartbeat:Connect(function()
-                local LP = game:GetService("Players").LocalPlayer
-                local char = LP.Character
-                if not char then return end
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if not hum then return end
-
-                -- force get up if ragdolled
-                local state = hum:GetState()
-                if state == Enum.HumanoidStateType.Physics
-                    or state == Enum.HumanoidStateType.FallingDown
-                    or state == Enum.HumanoidStateType.Ragdoll then
-
-                    for _, v in ipairs(char:GetDescendants()) do
-                        if v:IsA("Motor6D") then
-                            v.Enabled = true
-                        end
-                    end
-                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                end
-
-                -- strip excess velocity to prevent ragdoll trigger
-                local root = char:FindFirstChild("HumanoidRootPart")
-                if root then
-                    local vel = root.AssemblyLinearVelocity
-                    if vel.Magnitude > 150 then
-                        root.AssemblyLinearVelocity = vel.Unit * 150
-                    end
-                end
-            end)
-            getgenv().AntiRagdollConnection = antiRagdollConn
-        else
-            antiRagBtn.Text = "Anti-Ragdoll: OFF"
-            antiRagBtn.BackgroundColor3 = BTN_OFF
-            if antiRagdollConn then
-                antiRagdollConn:Disconnect()
-                antiRagdollConn = nil
-                getgenv().AntiRagdollConnection = nil
-            end
-        end
-    end)
-    yPos = yPos + 42
-
-    -- Info
-    local ragInfoBg = Instance.new("Frame")
-    ragInfoBg.Size = UDim2.new(1, -20, 0, 45)
-    ragInfoBg.Position = UDim2.new(0, 10, 0, yPos)
-    ragInfoBg.BackgroundColor3 = TXT_BG
-    ragInfoBg.BorderSizePixel = 0
-    ragInfoBg.ZIndex = 66
-    ragInfoBg.Parent = miscContent
-
-    local ragInfo = Instance.new("TextLabel")
-    ragInfo.Size = UDim2.new(1, -8, 1, 0)
-    ragInfo.Position = UDim2.new(0, 4, 0, 0)
-    ragInfo.BackgroundTransparency = 1
-    ragInfo.Text = "Anti-Ragdoll caps velocity at 150 and\nauto-recovers from ragdoll states.\nUse Force Ragdoll to ragdoll on demand."
-    ragInfo.Font = Enum.Font.Gotham
-    ragInfo.TextSize = 11
-    ragInfo.TextColor3 = TEXT_COL
-    ragInfo.TextXAlignment = Enum.TextXAlignment.Left
-    ragInfo.TextYAlignment = Enum.TextYAlignment.Top
-    ragInfo.TextWrapped = true
-    ragInfo.ZIndex = 67
-    ragInfo.Parent = ragInfoBg
-    yPos = yPos + 50
-
-    miscContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
-end
-
-function MiscModule.Cleanup()
-    if LoadedTools.MoveTool then LoadedTools.MoveTool.Disable() end
-    if LoadedTools.RotateTool then LoadedTools.RotateTool.Disable() end
-    if LoadedTools.RingShape then LoadedTools.RingShape.Disable() end
-    if LoadedTools.RPMTool then LoadedTools.RPMTool.Disable() end
-    if getgenv().SafeNOSConnection then
-        getgenv().SafeNOSConnection:Disconnect()
-        getgenv().SafeNOSConnection = nil
     end
-    getgenv().SafeNOSEnabled = false
-    if getgenv().DisableAASConnection then
-        pcall(function() task.cancel(getgenv().DisableAASConnection) end)
-        getgenv().DisableAASConnection = nil
+
+    if not target then
+        if checkIdle(dt) then click() end
+        return
     end
-    getgenv().DisableAASEnabled = false
-    getgenv().FlipPlayerEnabled = false
-    if getgenv().AntiRagdollConnection then
-        pcall(function() getgenv().AntiRagdollConnection:Disconnect() end)
-        getgenv().AntiRagdollConnection = nil
+
+    -- press "1" once when monster first detected
+    if not pressedOne then
+        tapKey(Enum.KeyCode.One)
+        pressedOne = true
     end
-    if getgenv().AutoFarmControl then
-        pcall(function() getgenv().AutoFarmControl.Stop() end)
+
+    if s.TargetMemory then
+        memoryTarget = target
+    end
+
+    local d = dist3d(LP, target)
+
+    -- anti-back
+    if s.AntiBack and movingAway(target) then
+        local a, b = root(LP), root(target)
+        if a and b then
+            local flat = Vector3.new(a.Position.X - b.Position.X, 0, a.Position.Z - b.Position.Z)
+            if flat.Magnitude > 0.1 then
+                moveTo(a.Position + flat.Unit * 5)
+            end
+        end
+        tryJump()
+        if checkIdle(dt) then click() end
+        return
+    end
+
+    -- attack: 30cps
+    if d <= 4 then
+        face(target)
+        local interval = 1 / HUMAN_CPS
+        if now - lastClickTime >= interval then
+            click()
+            lastClickTime = now
+        end
+    end
+
+    -- idle click
+    if checkIdle(dt) then
+        click()
+    end
+
+    tryJump()
+    local tpos = predict(target) or (root(target) and root(target).Position)
+    if tpos then
+        goTo(tpos, target)
     end
 end
 
-return MiscModule
+-- ========== MAIN ==========
+local function repairAllTools()
+    pcall(function()
+        local remotes = game:GetService("ReplicatedStorage"):WaitForChild("Remotes", 5)
+        if not remotes then return end
+        local shopInteract = remotes:WaitForChild("ShopInteract", 5)
+        if not shopInteract then return end
+        for _, toolName in ipairs(REPAIR_TOOLS) do
+            pcall(function()
+                shopInteract:InvokeServer("Repair", toolName)
+            end)
+        end
+    end)
+end
+
+local function onDeath()
+    -- reset "1" key press so it fires again next life
+    pressedOne = false
+    memoryTarget = nil
+    monsterNoDmgStart = nil
+    idleTimer = 0
+
+    -- repair tools 5 seconds after death
+    task.delay(5, function()
+        if running then
+            repairAllTools()
+        end
+    end)
+end
+
+local function hookCharacter(char)
+    if not char then return end
+    local humanoid = char:WaitForChild("Humanoid", 10)
+    if not humanoid then return end
+
+    if deathConn then pcall(function() deathConn:Disconnect() end) end
+    deathConn = humanoid.Died:Connect(function()
+        onDeath()
+    end)
+end
+
+local function setupCharacterHook()
+    -- hook current character
+    if LP.Character then
+        hookCharacter(LP.Character)
+    end
+
+    -- hook future characters
+    if charConn then pcall(function() charConn:Disconnect() end) end
+    charConn = LP.CharacterAdded:Connect(function(char)
+        hookCharacter(char)
+    end)
+end
+
+local function onFrame(dt)
+    if not running then return end
+    if not alive(LP) then
+        monsterNoDmgStart = tick()
+        idleTimer = 0
+        return
+    end
+
+    local my = team(LP)
+    if my == "Humans" then updateCircle() else destroyCircle() end
+    if my == "Monsters" then monsterFrame(dt)
+    elseif my == "Humans" then humanFrame(dt) end
+end
+
+-- ========== START / STOP ==========
+local function startFarm()
+    if running then return end
+    running = true
+
+    local h = hum(LP)
+    if h then
+        h.JumpHeight = JUMP_H
+        h.UseJumpPower = false
+        monsterLastHP = h.Health
+    end
+
+    lastJump = tick()
+    lastClickTime = tick()
+    monsterNoDmgStart = tick()
+    lastSpawnPress = 0
+    memoryTarget = nil
+    pressedOne = false
+    idleXZ = nil
+    idleTimer = 0
+    clearPF()
+
+    setupCharacterHook()
+
+    heartbeatConn = RunService.Heartbeat:Connect(onFrame)
+    print("[AutoFarm] ON - " .. tostring(team(LP)))
+end
+
+local function stopFarm()
+    -- set flag first so onFrame exits immediately
+    running = false
+
+    -- disconnect
+    if heartbeatConn then
+        pcall(function() heartbeatConn:Disconnect() end)
+        heartbeatConn = nil
+    end
+
+    -- cleanup
+    clearPF()
+    destroyCircle()
+    pcall(function() stopMov() end)
+
+    -- disconnect death hooks
+    if deathConn then pcall(function() deathConn:Disconnect() end) deathConn = nil end
+    if charConn then pcall(function() charConn:Disconnect() end) charConn = nil end
+
+    -- reset
+    monsterNoDmgStart = nil
+    monsterLastHP = nil
+    memoryTarget = nil
+    pressedOne = false
+    idleXZ = nil
+    idleTimer = 0
+
+    print("[AutoFarm] OFF")
+end
+
+local function setWP()
+    local r = root(LP)
+    if not r then return end
+    local s = S()
+    s.Waypoint = r.Position
+    getgenv().AutoFarmSettings = s
+    print("[AutoFarm] Waypoint set")
+end
+
+local function removeWP()
+    local s = S()
+    s.Waypoint = nil
+    getgenv().AutoFarmSettings = s
+    print("[AutoFarm] Waypoint removed")
+end
+
+-- kill old instance if re-executed
+if getgenv().AutoFarmControl and getgenv().AutoFarmControl.IsRunning() then
+    pcall(function() getgenv().AutoFarmControl.Stop() end)
+    task.wait(0.1)
+end
+
+getgenv().AutoFarmControl = {
+    Start = startFarm,
+    Stop = stopFarm,
+    SetWaypoint = setWP,
+    RemoveWaypoint = removeWP,
+    IsRunning = function() return running end
+}
+
+if getgenv().AutoFarmSettings and getgenv().AutoFarmSettings.Enabled then
+    startFarm()
+end
+
+print("[AutoFarm] Loaded")
+return getgenv().AutoFarmControl
