@@ -5,8 +5,6 @@
 -- Monsters: click within 30 studs, click if alive 20s without taking damage
 -- Humans: press "1" once on monster detect, 30cps, anti-back, target memory, waypoint
 
-print("hmn")
-
 local Players = game:GetService("Players")
 local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
@@ -43,11 +41,22 @@ local idleTimer = 0
 -- monsters
 local monsterLastHP = nil
 local monsterNoDmgStart = nil
+local lastSpawnPress = 0
 
 -- humans
 local pressedOne = false
 local memoryTarget = nil
 local circlePart = nil
+
+-- death tracking
+local deathConn = nil
+local charConn = nil
+
+-- tools to repair after death
+local REPAIR_TOOLS = {
+    "WoodenSword", "StoneSword", "IronSword", "Bow",
+    "GoldSword", "DiamondSword", "EmeraldAxe", "Trident", "ObsidianHammer"
+}
 
 -- pathfind (wall only)
 local pfWaypoints = nil
@@ -464,18 +473,66 @@ local function movingAway(tgt)
     return (toUs.X * hv.Unit.X + toUs.Z * hv.Unit.Z) < -0.3
 end
 
+-- ========== SPAWN BUTTON (Monsters) ==========
+local function pressSpawnButton()
+    pcall(function()
+        local playerGui = LP:FindFirstChild("PlayerGui")
+        if not playerGui then return end
+
+        local buttons = {}
+        for _, desc in ipairs(playerGui:GetDescendants()) do
+            if desc.Name == "SpawnButtonTemplate" then
+                local btn = desc:FindFirstChild("Button")
+                if btn and btn:IsA("GuiButton") and btn.Visible then
+                    buttons[#buttons + 1] = btn
+                end
+            end
+        end
+
+        if #buttons > 0 then
+            local pick = buttons[math.random(1, #buttons)]
+            -- fire all click events
+            for _, conn in ipairs(pick:GetConnections("MouseButton1Click") or {}) do
+                pcall(function() conn:Fire() end)
+            end
+            for _, conn in ipairs(pick:GetConnections("Activated") or {}) do
+                pcall(function() conn:Fire() end)
+            end
+            -- also try firesignal if available
+            pcall(function()
+                if firesignal then
+                    firesignal(pick.MouseButton1Click)
+                    firesignal(pick.Activated)
+                end
+            end)
+        end
+    end)
+end
+
 -- ========== MONSTERS FRAME ==========
 local function monsterFrame(dt)
     local target = findAny()
     if not target then
         stopMov()
         clearPF()
+        -- still press spawn button when dead/no target
+        local now = tick()
+        if now - lastSpawnPress >= 1 then
+            pressSpawnButton()
+            lastSpawnPress = now
+        end
         return
     end
 
     local d = dist3d(LP, target)
     local now = tick()
     local h = hum(LP)
+
+    -- press spawn button every 1 second
+    if now - lastSpawnPress >= 1 then
+        pressSpawnButton()
+        lastSpawnPress = now
+    end
 
     -- track damage: if health dropped, reset no-damage timer
     if h then
@@ -538,7 +595,6 @@ local function humanFrame(dt)
 
     -- no target in radius
     if not target then
-        pressedOne = false
         local wp = s.Waypoint
         if wp then
             local d = distPos(LP, wp)
@@ -614,6 +670,59 @@ local function humanFrame(dt)
 end
 
 -- ========== MAIN ==========
+local function repairAllTools()
+    pcall(function()
+        local remotes = game:GetService("ReplicatedStorage"):WaitForChild("Remotes", 5)
+        if not remotes then return end
+        local shopInteract = remotes:WaitForChild("ShopInteract", 5)
+        if not shopInteract then return end
+        for _, toolName in ipairs(REPAIR_TOOLS) do
+            pcall(function()
+                shopInteract:InvokeServer("Repair", toolName)
+            end)
+        end
+    end)
+end
+
+local function onDeath()
+    -- reset "1" key press so it fires again next life
+    pressedOne = false
+    memoryTarget = nil
+    monsterNoDmgStart = nil
+    idleTimer = 0
+
+    -- repair tools 5 seconds after death
+    task.delay(5, function()
+        if running then
+            repairAllTools()
+        end
+    end)
+end
+
+local function hookCharacter(char)
+    if not char then return end
+    local humanoid = char:WaitForChild("Humanoid", 10)
+    if not humanoid then return end
+
+    if deathConn then pcall(function() deathConn:Disconnect() end) end
+    deathConn = humanoid.Died:Connect(function()
+        onDeath()
+    end)
+end
+
+local function setupCharacterHook()
+    -- hook current character
+    if LP.Character then
+        hookCharacter(LP.Character)
+    end
+
+    -- hook future characters
+    if charConn then pcall(function() charConn:Disconnect() end) end
+    charConn = LP.CharacterAdded:Connect(function(char)
+        hookCharacter(char)
+    end)
+end
+
 local function onFrame(dt)
     if not running then return end
     if not alive(LP) then
@@ -643,11 +752,14 @@ local function startFarm()
     lastJump = tick()
     lastClickTime = tick()
     monsterNoDmgStart = tick()
+    lastSpawnPress = 0
     memoryTarget = nil
     pressedOne = false
     idleXZ = nil
     idleTimer = 0
     clearPF()
+
+    setupCharacterHook()
 
     heartbeatConn = RunService.Heartbeat:Connect(onFrame)
     print("[AutoFarm] ON - " .. tostring(team(LP)))
@@ -667,6 +779,10 @@ local function stopFarm()
     clearPF()
     destroyCircle()
     pcall(function() stopMov() end)
+
+    -- disconnect death hooks
+    if deathConn then pcall(function() deathConn:Disconnect() end) deathConn = nil end
+    if charConn then pcall(function() charConn:Disconnect() end) charConn = nil end
 
     -- reset
     monsterNoDmgStart = nil
