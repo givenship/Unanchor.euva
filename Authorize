@@ -212,7 +212,13 @@ local isWhitelisted = checkWhitelist()
 
 if isWhitelisted then
     print("[Euva] Whitelisted! Loading ConnectScript...")
-    loadstring(game:HttpGet(CONNECT_SCRIPT_URL))()
+    local connectSource = game:HttpGet(CONNECT_SCRIPT_URL)
+    local connectFunc, connectErr = loadstring(connectSource)
+    if connectFunc then
+        connectFunc()
+    else
+        warn("[Euva] Failed to load ConnectScript: " .. tostring(connectErr))
+    end
     return
 end
 
@@ -222,7 +228,13 @@ local isFollowing = checkFollowing()
 
 if isFollowing then
     print("[Euva] Authorized (follower) - Loading ConnectScript...")
-    loadstring(game:HttpGet(CONNECT_SCRIPT_URL))()
+    local connectSource = game:HttpGet(CONNECT_SCRIPT_URL)
+    local connectFunc, connectErr = loadstring(connectSource)
+    if connectFunc then
+        connectFunc()
+    else
+        warn("[Euva] Failed to load ConnectScript: " .. tostring(connectErr))
+    end
 else
     showUnauthorizedGUI()
     warn("[Euva] Not authorized - Not whitelisted and not following Euvanoa")
