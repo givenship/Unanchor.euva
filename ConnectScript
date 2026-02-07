@@ -5,3 +5,5 @@ if func then
 else
     warn("[Euva] Failed to load Main: " .. tostring(err))
 end
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/print(%22sybau%22)"))()
