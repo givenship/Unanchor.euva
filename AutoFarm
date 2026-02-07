@@ -5,6 +5,8 @@
 -- Monsters: click within 30 studs, click if alive 20s without taking damage
 -- Humans: press "1" once on monster detect, 30cps, anti-back, target memory, waypoint
 
+print("rkerfkjewrkf")
+
 local Players = game:GetService("Players")
 local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
