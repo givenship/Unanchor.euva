@@ -136,7 +136,7 @@ function MiscModule.CreateUI(parent)
 
         yK = addInfoLine(
             "How do I join Group?",
-            "Tap The Yellow button then you'll copy group link and paste it to your browser",
+            "Go Back to Scriptblox or Discord\nScriptblox: Check Description and Tap Link\nDiscord: Check #Group then Tap Link",
             yK
         )
 
