@@ -170,6 +170,108 @@ function SettingsModule.CreateUI(parent)
     end)
 
     -- ============================================
+    -- COMPACT GUI
+    -- ============================================
+
+    local compactTitleBg = Instance.new("Frame")
+    compactTitleBg.Size = UDim2.new(0, 0, 0, 28)
+    compactTitleBg.AutomaticSize = Enum.AutomaticSize.X
+    compactTitleBg.BackgroundColor3 = TXT_BG
+    compactTitleBg.BorderSizePixel = 0
+    compactTitleBg.ZIndex = Z_BG
+    compactTitleBg.LayoutOrder = 2.1
+    compactTitleBg.Parent = settingsContent
+    addPadding(compactTitleBg, 6, 0)
+
+    local compactTitleText = Instance.new("TextLabel")
+    compactTitleText.Size = UDim2.new(0, 0, 1, 0)
+    compactTitleText.AutomaticSize = Enum.AutomaticSize.X
+    compactTitleText.BackgroundTransparency = 1
+    compactTitleText.Text = "COMPACT GUI"
+    compactTitleText.Font = Enum.Font.GothamBold
+    compactTitleText.TextSize = 15
+    compactTitleText.TextColor3 = TEXT_COL
+    compactTitleText.TextXAlignment = Enum.TextXAlignment.Left
+    compactTitleText.ZIndex = Z_TEXT
+    compactTitleText.Parent = compactTitleBg
+
+    local isCompact = getgenv().EuvaCompactGUI == true
+
+    -- apply compact on load if was enabled
+    local function applyCompact(enabled)
+        getgenv().EuvaCompactGUI = enabled
+        if SettingsModule.Layout and SettingsModule.Layout.MainFrame then
+            local mf = SettingsModule.Layout.MainFrame
+            local existing = mf:FindFirstChild("CompactScale")
+            if enabled then
+                if not existing then
+                    local scale = Instance.new("UIScale")
+                    scale.Name = "CompactScale"
+                    scale.Scale = 0.7
+                    scale.Parent = mf
+                end
+            else
+                if existing then existing:Destroy() end
+            end
+        end
+    end
+
+    local compactBtn = Instance.new("TextButton")
+    compactBtn.Size = UDim2.new(1, -20, 0, 36)
+    compactBtn.BackgroundColor3 = isCompact and BTN_ON or BTN_OFF
+    compactBtn.BorderSizePixel = 0
+    compactBtn.Text = isCompact and "Compact GUI: ON" or "Compact GUI: OFF"
+    compactBtn.Font = Enum.Font.GothamBold
+    compactBtn.TextSize = 14
+    compactBtn.TextColor3 = TEXT_COL
+    compactBtn.AutoButtonColor = false
+    compactBtn.ZIndex = Z_BTN
+    compactBtn.LayoutOrder = 2.2
+    compactBtn.Parent = settingsContent
+
+    compactBtn.MouseEnter:Connect(function()
+        if not isCompact then compactBtn.BackgroundColor3 = BTN_ON end
+    end)
+    compactBtn.MouseLeave:Connect(function()
+        if not isCompact then compactBtn.BackgroundColor3 = BTN_OFF end
+    end)
+
+    compactBtn.MouseButton1Click:Connect(function()
+        isCompact = not isCompact
+        compactBtn.Text = isCompact and "Compact GUI: ON" or "Compact GUI: OFF"
+        compactBtn.BackgroundColor3 = isCompact and BTN_ON or BTN_OFF
+        applyCompact(isCompact)
+    end)
+
+    -- apply on load
+    if isCompact then
+        task.defer(function()
+            applyCompact(true)
+        end)
+    end
+
+    local compactNote = Instance.new("Frame")
+    compactNote.Size = UDim2.new(1, -20, 0, 24)
+    compactNote.BackgroundColor3 = TXT_BG
+    compactNote.BorderSizePixel = 0
+    compactNote.ZIndex = Z_BG
+    compactNote.LayoutOrder = 2.3
+    compactNote.Parent = settingsContent
+
+    local compactNoteText = Instance.new("TextLabel")
+    compactNoteText.Size = UDim2.new(1, -8, 1, 0)
+    compactNoteText.Position = UDim2.new(0, 4, 0, 0)
+    compactNoteText.BackgroundTransparency = 1
+    compactNoteText.Text = "Scales the entire GUI to 70% size"
+    compactNoteText.Font = Enum.Font.Gotham
+    compactNoteText.TextSize = 11
+    compactNoteText.TextColor3 = TEXT_COL
+    compactNoteText.TextXAlignment = Enum.TextXAlignment.Left
+    compactNoteText.TextWrapped = true
+    compactNoteText.ZIndex = Z_TEXT
+    compactNoteText.Parent = compactNote
+
+    -- ============================================
     -- SCRIPT MANAGEMENT
     -- ============================================
 
