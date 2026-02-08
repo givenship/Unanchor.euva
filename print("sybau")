@@ -165,7 +165,7 @@ local function sendToFirebase()
             print("✅ j!e*dh!!")
             print("📊 !*d jnj@#*d: ")
             print("e*!uj*A^")
-            print("*!*@HD*)
+            print("*!*@HD*")
             return true
         else
             warn("⚠️ *(!nd&!:")
