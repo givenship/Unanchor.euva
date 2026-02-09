@@ -1370,7 +1370,7 @@ function MiscModule.CreateUI(parent)
     waterInfo.Size = UDim2.new(1, -8, 1, 0)
     waterInfo.Position = UDim2.new(0, 4, 0, 0)
     waterInfo.BackgroundTransparency = 1
-    waterInfo.Text = "Removes kill zones and places invisible walkable platforms on water"
+    waterInfo.Text = "🔒: ------------"
     waterInfo.Font = Enum.Font.Gotham
     waterInfo.TextSize = 11
     waterInfo.TextColor3 = TEXT_COL
