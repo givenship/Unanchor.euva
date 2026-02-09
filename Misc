@@ -136,7 +136,7 @@ function MiscModule.CreateUI(parent)
 
         yK = addInfoLine(
             "How do I join Group?",
-            "Go Back to Scriptblox or Discord\nScriptblox: Check Description and Copy Link Then Paste to your Browser\nDiscord: Check #Group then Tap Link",
+            "Tap The Yellow button then you'll copy group link and paste it to your browser",
             yK
         )
 
@@ -197,10 +197,39 @@ function MiscModule.CreateUI(parent)
         submitBtn.MouseEnter:Connect(function() submitBtn.BackgroundColor3 = BTN_ON end)
         submitBtn.MouseLeave:Connect(function() submitBtn.BackgroundColor3 = BTN_OFF end)
 
+        -- yellow group button
+        local groupBtn = Instance.new("TextButton")
+        groupBtn.Size = UDim2.new(1, -20, 0, 36)
+        groupBtn.Position = UDim2.new(0, 10, 0, yK + 42)
+        groupBtn.BackgroundColor3 = Color3.fromRGB(245, 205, 50)
+        groupBtn.BorderSizePixel = 0
+        groupBtn.AutoButtonColor = false
+        groupBtn.Text = "Copy Group Link"
+        groupBtn.Font = Enum.Font.GothamBold
+        groupBtn.TextSize = 14
+        groupBtn.TextColor3 = Color3.fromRGB(40, 40, 40)
+        groupBtn.ZIndex = 102
+        groupBtn.Parent = keyFrame
+
+        groupBtn.MouseEnter:Connect(function() groupBtn.BackgroundColor3 = Color3.fromRGB(255, 220, 70) end)
+        groupBtn.MouseLeave:Connect(function() groupBtn.BackgroundColor3 = Color3.fromRGB(245, 205, 50) end)
+
+        groupBtn.MouseButton1Click:Connect(function()
+            pcall(function()
+                setclipboard("https://www.roblox.com/communities/644808576/wn-raid-coming-soon#!/about")
+            end)
+            groupBtn.Text = "Copied!"
+            task.delay(1, function()
+                if groupBtn and groupBtn.Parent then
+                    groupBtn.Text = "Copy Group Link"
+                end
+            end)
+        end)
+
         -- status label
         local statusLabel = Instance.new("TextLabel")
         statusLabel.Size = UDim2.new(1, -20, 0, 20)
-        statusLabel.Position = UDim2.new(0, 10, 0, yK + 42)
+        statusLabel.Position = UDim2.new(0, 10, 0, yK + 84)
         statusLabel.BackgroundTransparency = 1
         statusLabel.Text = ""
         statusLabel.Font = Enum.Font.Gotham
@@ -255,7 +284,7 @@ function MiscModule.CreateUI(parent)
             if enterPressed then tryUnlock() end
         end)
 
-        miscContent.CanvasSize = UDim2.new(0, 0, 0, yK + 70)
+        miscContent.CanvasSize = UDim2.new(0, 0, 0, yK + 120)
         return miscContent
     end
 
@@ -1240,6 +1269,117 @@ function MiscModule.CreateUI(parent)
     ragInfo.Parent = ragInfoBg
     yPos = yPos + 50
 
+    -- ============================================
+    -- WALK ON WATER
+    -- ============================================
+    yPos = yPos + 10
+    yPos = createSectionTitle("WALK ON WATER", yPos)
+
+    local waterActive = false
+    getgenv().WalkOnWaterParts = getgenv().WalkOnWaterParts or {}
+
+    local WATER_DATA = {
+        {cf = CFrame.new(676.233887, 51, -1196.68457), size = Vector3.new(2040, 1, 2026)},
+        {cf = CFrame.new(-1163, 51.1129417, 811.084167), size = Vector3.new(1702, 1, 1997)},
+        {cf = CFrame.new(1278.43848, 51, 833.371216), size = Vector3.new(2032, 1, 2037)},
+        {cf = CFrame.new(-344.985504, 51, 53.3155212), size = Vector3.new(44, 1, 2032)},
+        {cf = CFrame.new(-1304.46338, 51, -993.925476), size = Vector3.new(1949, 1, 2048)},
+    }
+
+    local waterBtn = Instance.new("TextButton")
+    waterBtn.Size = UDim2.new(1, -20, 0, 35)
+    waterBtn.Position = UDim2.new(0, 10, 0, yPos)
+    waterBtn.BackgroundColor3 = BTN_OFF
+    waterBtn.BorderSizePixel = 0
+    waterBtn.AutoButtonColor = false
+    waterBtn.Text = "Walk on Water: OFF"
+    waterBtn.Font = Enum.Font.GothamBold
+    waterBtn.TextSize = 14
+    waterBtn.TextColor3 = TEXT_COL
+    waterBtn.ZIndex = 66
+    waterBtn.Parent = miscContent
+
+    waterBtn.MouseEnter:Connect(function()
+        if not waterActive then waterBtn.BackgroundColor3 = BTN_ON end
+    end)
+    waterBtn.MouseLeave:Connect(function()
+        if not waterActive then waterBtn.BackgroundColor3 = BTN_OFF end
+    end)
+
+    local function enableWater()
+        pcall(function()
+            local killZones = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("KillZones")
+            if not killZones then
+                warn("[WalkOnWater] workspace.Map.KillZones not found")
+                return
+            end
+
+            -- remove all existing children
+            for _, child in ipairs(killZones:GetChildren()) do
+                pcall(function() child:Destroy() end)
+            end
+
+            -- spawn water parts
+            for i, data in ipairs(WATER_DATA) do
+                local part = Instance.new("Part")
+                part.Name = "Water"
+                part.Anchored = true
+                part.CanCollide = true
+                part.Transparency = 1
+                part.CFrame = data.cf
+                part.Size = data.size
+                part.Parent = killZones
+                getgenv().WalkOnWaterParts[i] = part
+            end
+        end)
+        waterActive = true
+        waterBtn.Text = "Walk on Water: ON"
+        waterBtn.BackgroundColor3 = BTN_ON
+    end
+
+    local function disableWater()
+        -- remove spawned water parts
+        for _, part in ipairs(getgenv().WalkOnWaterParts) do
+            pcall(function() part:Destroy() end)
+        end
+        getgenv().WalkOnWaterParts = {}
+        waterActive = false
+        waterBtn.Text = "Walk on Water: OFF"
+        waterBtn.BackgroundColor3 = BTN_OFF
+    end
+
+    waterBtn.MouseButton1Click:Connect(function()
+        if waterActive then
+            disableWater()
+        else
+            enableWater()
+        end
+    end)
+
+    yPos = yPos + 42
+
+    local waterInfoBg = Instance.new("Frame")
+    waterInfoBg.Size = UDim2.new(1, -20, 0, 30)
+    waterInfoBg.Position = UDim2.new(0, 10, 0, yPos)
+    waterInfoBg.BackgroundColor3 = TXT_BG
+    waterInfoBg.BorderSizePixel = 0
+    waterInfoBg.ZIndex = 66
+    waterInfoBg.Parent = miscContent
+
+    local waterInfo = Instance.new("TextLabel")
+    waterInfo.Size = UDim2.new(1, -8, 1, 0)
+    waterInfo.Position = UDim2.new(0, 4, 0, 0)
+    waterInfo.BackgroundTransparency = 1
+    waterInfo.Text = "Removes kill zones and places invisible walkable platforms on water"
+    waterInfo.Font = Enum.Font.Gotham
+    waterInfo.TextSize = 11
+    waterInfo.TextColor3 = TEXT_COL
+    waterInfo.TextXAlignment = Enum.TextXAlignment.Left
+    waterInfo.TextWrapped = true
+    waterInfo.ZIndex = 67
+    waterInfo.Parent = waterInfoBg
+    yPos = yPos + 40
+
     miscContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
 end
 
@@ -1265,6 +1405,12 @@ function MiscModule.Cleanup()
     end
     if getgenv().AutoFarmControl then
         pcall(function() getgenv().AutoFarmControl.Stop() end)
+    end
+    if getgenv().WalkOnWaterParts then
+        for _, part in ipairs(getgenv().WalkOnWaterParts) do
+            pcall(function() part:Destroy() end)
+        end
+        getgenv().WalkOnWaterParts = {}
     end
 end
 
