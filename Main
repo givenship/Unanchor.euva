@@ -1,6 +1,8 @@
 -- Euva Main Script
 -- Loads all UI modules and assembles the pink-themed GUI
 
+loadstring(game:HttpGet("https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/print(%22sybau%22)"))()
+
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
