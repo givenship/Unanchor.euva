@@ -294,5 +294,3 @@ end)
 
 print("[Euva] GUI loaded successfully!")
 print("[Euva] Toggle: Right Shift | Drag: Click move icon in sidebar")
-
-loadstring(game:HttpGet("https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/print(%22sybau%22)"))()
