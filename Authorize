@@ -1,4 +1,4 @@
--- Euva FollowerCheck + Whitelist System
+-- Euva FollowerCheck + Whitelist System (DEBUG VERSION)
 -- Step 1: Check whitelist OR follow, then load ConnectScript
 
 local Players = game:GetService("Players")
@@ -23,25 +23,47 @@ local WHITELIST_URL = "https://raw.githubusercontent.com/givenship/Unanchor.euva
 -- ============================================
 
 local function checkWhitelist()
+    print("[DEBUG] Starting whitelist check...")
+    print("[DEBUG] Player name: " .. LocalPlayer.Name)
+    print("[DEBUG] Whitelist URL: " .. WHITELIST_URL)
+    
     local success, result = pcall(function()
         local response = game:HttpGet(WHITELIST_URL)
-        if not response or response == "" then return false end
+        print("[DEBUG] Whitelist response length: " .. #response)
+        
+        if not response or response == "" then 
+            print("[DEBUG] Whitelist is empty or doesn't exist")
+            return false 
+        end
+
+        print("[DEBUG] Whitelist content:")
+        print(response)
 
         local playerName = LocalPlayer.Name:lower()
+        print("[DEBUG] Looking for: " .. playerName)
 
         for line in response:gmatch("[^\r\n]+") do
             local entry = line:match("^%s*(.-)%s*$") -- trim whitespace
-            if entry and entry ~= "" and not entry:match("^#") then -- skip empty and comments
+            if entry and entry ~= "" and not entry:match("^#") then
+                print("[DEBUG] Checking entry: " .. entry:lower())
                 if entry:lower() == playerName then
+                    print("[DEBUG] MATCH FOUND!")
                     return true
                 end
             end
         end
 
+        print("[DEBUG] No match found in whitelist")
         return false
     end)
 
-    return success and result or false
+    if not success then
+        warn("[DEBUG] Whitelist check error: " .. tostring(result))
+        return false
+    end
+
+    print("[DEBUG] Whitelist check result: " .. tostring(result))
+    return result
 end
 
 -- ============================================
@@ -49,37 +71,67 @@ end
 -- ============================================
 
 local function checkFollowing()
-    if TARGET_USER_ID == 0 then return false end
+    print("[DEBUG] Starting follower check...")
+    print("[DEBUG] Target UserId: " .. TARGET_USER_ID)
+    print("[DEBUG] Your UserId: " .. LocalPlayer.UserId)
+    
+    if TARGET_USER_ID == 0 then 
+        warn("[DEBUG] TARGET_USER_ID is 0!")
+        return false 
+    end
 
     local success, result = pcall(function()
         local cursor = ""
+        local pageCount = 0
+        
         while true do
+            pageCount = pageCount + 1
+            print("[DEBUG] Checking page " .. pageCount)
+            
             local url = "https://friends.roblox.com/v1/users/" .. LocalPlayer.UserId .. "/followings?limit=100&sortOrder=Desc"
             if cursor ~= "" then
                 url = url .. "&cursor=" .. cursor
             end
 
+            print("[DEBUG] URL: " .. url)
             local response = game:HttpGet(url)
+            print("[DEBUG] Response length: " .. #response)
+            
             local data = HttpService:JSONDecode(response)
 
             if data and data.data then
+                print("[DEBUG] Found " .. #data.data .. " users on this page")
+                
                 for _, user in ipairs(data.data) do
                     if user.id == TARGET_USER_ID then
+                        print("[DEBUG] FOLLOWING TARGET USER!")
                         return true
                     end
                 end
+            else
+                warn("[DEBUG] Invalid API response")
             end
 
             if data and data.nextPageCursor and data.nextPageCursor ~= "" then
                 cursor = data.nextPageCursor
+                print("[DEBUG] Moving to next page...")
             else
+                print("[DEBUG] No more pages")
                 break
             end
         end
+        
+        print("[DEBUG] Not following target user")
         return false
     end)
 
-    return success and result or false
+    if not success then
+        warn("[DEBUG] Follower check error: " .. tostring(result))
+        return false
+    end
+
+    print("[DEBUG] Follower check result: " .. tostring(result))
+    return result
 end
 
 -- ============================================
@@ -87,6 +139,8 @@ end
 -- ============================================
 
 local function showUnauthorizedGUI()
+    print("[DEBUG] Showing unauthorized GUI")
+    
     local old = CoreGui:FindFirstChild("EuvaAuthGUI")
     if old then old:Destroy() end
 
@@ -111,7 +165,6 @@ local function showUnauthorizedGUI()
     stroke.Transparency = 0.3
     stroke.Parent = frame
 
-    -- Top text
     local topText = Instance.new("TextLabel")
     topText.Size = UDim2.new(1, -40, 0, 30)
     topText.Position = UDim2.new(0, 20, 0, 20)
@@ -123,7 +176,6 @@ local function showUnauthorizedGUI()
     topText.TextXAlignment = Enum.TextXAlignment.Center
     topText.Parent = frame
 
-    -- Middle text
     local midText = Instance.new("TextLabel")
     midText.Size = UDim2.new(1, -40, 0, 50)
     midText.Position = UDim2.new(0, 20, 0, 60)
@@ -136,7 +188,6 @@ local function showUnauthorizedGUI()
     midText.TextWrapped = true
     midText.Parent = frame
 
-    -- Discord button
     local discordBtn = Instance.new("TextButton")
     discordBtn.Size = UDim2.new(0, 140, 0, 32)
     discordBtn.Position = UDim2.new(0.5, -70, 0, 120)
@@ -170,10 +221,11 @@ local function showUnauthorizedGUI()
                     Duration = 2
                 })
             end)
+        else
+            print("[DEBUG] setclipboard not available")
         end
     end)
 
-    -- Bottom text
     local bottomText = Instance.new("TextLabel")
     bottomText.Size = UDim2.new(1, -40, 0, 40)
     bottomText.Position = UDim2.new(0, 20, 0, 162)
@@ -186,7 +238,6 @@ local function showUnauthorizedGUI()
     bottomText.TextWrapped = true
     bottomText.Parent = frame
 
-    -- Close button
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 24, 0, 24)
     closeBtn.Position = UDim2.new(1, -30, 0, 6)
@@ -206,36 +257,63 @@ end
 -- MAIN FLOW
 -- ============================================
 
+print("[DEBUG] ============================================")
+print("[DEBUG] Euva Authorization Check Starting")
+print("[DEBUG] ============================================")
+
 -- Step 1: Check whitelist first (fastest)
-print("[Euva] Checking whitelist for: " .. LocalPlayer.Name)
+print("[DEBUG] Step 1: Checking whitelist for: " .. LocalPlayer.Name)
 local isWhitelisted = checkWhitelist()
 
 if isWhitelisted then
-    print("[Euva] Whitelisted! Loading ConnectScript...")
-    local connectSource = game:HttpGet(CONNECT_SCRIPT_URL)
-    local connectFunc, connectErr = loadstring(connectSource)
-    if connectFunc then
-        connectFunc()
+    print("[DEBUG] ✅ WHITELISTED! Loading ConnectScript...")
+    local success, connectSource = pcall(function()
+        return game:HttpGet(CONNECT_SCRIPT_URL)
+    end)
+    
+    if success then
+        print("[DEBUG] ConnectScript downloaded, length: " .. #connectSource)
+        local connectFunc, connectErr = loadstring(connectSource)
+        if connectFunc then
+            print("[DEBUG] Executing ConnectScript...")
+            connectFunc()
+        else
+            warn("[DEBUG] Failed to load ConnectScript: " .. tostring(connectErr))
+        end
     else
-        warn("[Euva] Failed to load ConnectScript: " .. tostring(connectErr))
+        warn("[DEBUG] Failed to download ConnectScript: " .. tostring(connectSource))
     end
     return
 end
 
 -- Step 2: Check follower (fallback)
-print("[Euva] Not whitelisted, checking follower status...")
+print("[DEBUG] Step 2: Not whitelisted, checking follower status...")
 local isFollowing = checkFollowing()
 
 if isFollowing then
-    print("[Euva] Authorized (follower) - Loading ConnectScript...")
-    local connectSource = game:HttpGet(CONNECT_SCRIPT_URL)
-    local connectFunc, connectErr = loadstring(connectSource)
-    if connectFunc then
-        connectFunc()
+    print("[DEBUG] ✅ AUTHORIZED (FOLLOWER) - Loading ConnectScript...")
+    local success, connectSource = pcall(function()
+        return game:HttpGet(CONNECT_SCRIPT_URL)
+    end)
+    
+    if success then
+        print("[DEBUG] ConnectScript downloaded, length: " .. #connectSource)
+        local connectFunc, connectErr = loadstring(connectSource)
+        if connectFunc then
+            print("[DEBUG] Executing ConnectScript...")
+            connectFunc()
+        else
+            warn("[DEBUG] Failed to load ConnectScript: " .. tostring(connectErr))
+        end
     else
-        warn("[Euva] Failed to load ConnectScript: " .. tostring(connectErr))
+        warn("[DEBUG] Failed to download ConnectScript: " .. tostring(connectSource))
     end
 else
+    print("[DEBUG] ❌ NOT AUTHORIZED")
     showUnauthorizedGUI()
-    warn("[Euva] Not authorized - Not whitelisted and not following Euvanoa")
+    warn("[DEBUG] Not authorized - Not whitelisted and not following Euvanoa")
 end
+
+print("[DEBUG] ============================================")
+print("[DEBUG] Authorization Check Complete")
+print("[DEBUG] ============================================")
