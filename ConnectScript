@@ -1,15 +1,1 @@
--- ConnectScript - What loads after authorization passes
--- This is just a placeholder - replace with your actual script
-
-print("✅ ConnectScript loaded!")
-print("Authorization successful")
-
--- Load your main GUI or executor here
--- Example:
--- loadstring(game:HttpGet("https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Main"))()
-
-game:GetService("StarterGui"):SetCore("SendNotification", {
-    Title = "EUVA",
-    Text = "Authorized! Welcome.",
-    Duration = 3
-})
+loadstring(game:HttpGet("https://raw.githubusercontent.com/givenship/Unanchor.euva/refs/heads/main/Main"))()
