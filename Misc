@@ -66,7 +66,7 @@ function MiscModule.CreateUI(parent)
     -- ============================================
     -- KEY GATE
     -- ============================================
-    local KEY = "whitelist"
+    local KEY = "thekey"
 
     -- check if already unlocked this session
     if not (getgenv().MiscKeyUnlocked == true) then
