@@ -1,4 +1,4 @@
--- Euva FollowerCheck + Whitelist System
+-- ████ FollowerCheck + Whitelist System
 -- Clean version without duplication
 
 local Players = game:GetService("Players")
@@ -113,7 +113,7 @@ local function showUnauthorizedGUI()
     midText.Size = UDim2.new(1, -40, 0, 50)
     midText.Position = UDim2.new(0, 20, 0, 60)
     midText.BackgroundTransparency = 1
-    midText.Text = "How to Get authorized?\nFollow The User \"Euvanoa\" in Roblox or Contact Discord."
+    midText.Text = "How to Get authorized?\nFollow The User \"E██anoa\" in Roblox or Contact Discord."
     midText.Font = Enum.Font.Arial
     midText.TextSize = 14
     midText.TextColor3 = Color3.fromRGB(200, 200, 200)
